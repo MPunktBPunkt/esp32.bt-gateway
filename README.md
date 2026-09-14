@@ -16,22 +16,24 @@ Sink (BMW / Kopfhörer / …)
 
 ## Status
 
-**Phase:** Planung / Pflichtenheft V1.0  
+**Phase:** Planung V1.1 (Review)  
 **Firmware:** noch nicht gestartet  
 **Lebender Stand:** [`STATE.md`](STATE.md)  
-**Planung:** [`docs/planung/`](docs/planung/)
+**Planung:** [`docs/planung/`](docs/planung/) — inkl. PiDrive-, Hub-, Betriebsmodi- und Review-Docs
 
 ## Was dieses Projekt ist
 
 - Dedizierte Bluetooth-Classic-Hardware (A2DP Source, AVRCP Target)
 - Analyzer-first: BMW-Verhalten zuerst vermessen, dann mappen
 - Eigenständiges ESP-IDF-Projekt + minimale Client-Integration
+- **ESP-Hub-Familie:** USB-Flash und OTA über [`iobroker.esp-hub`](https://github.com/MPunktBPunkt/iobroker.esp-hub) (dünner IDF-Client, kein Arduino-Compile)
 
 ## Was es bewusst nicht ist
 
 - Kein zweites Infotainment, kein Mixer, kein Quellen-Umschalter
-- Kein Handy-Relay (A2DP Sink + Source gleichzeitig)
+- Kein Handy-**BT**-Relay (A2DP Sink + Source gleichzeitig); Handy über PiDrive oder PDAP/WLAN
 - Kein ESP32-S3 / BLE-only
+- Kein Arduino-`esp-hub-base`-Klon (nur gleicher Hub-HTTP-Contract)
 
 ## Hardware (V1)
 

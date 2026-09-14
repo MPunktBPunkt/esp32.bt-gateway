@@ -5,26 +5,26 @@ Lebender Projektstand. Kurz halten; Details leben in `docs/planung/`.
 | Feld | Wert |
 |------|------|
 | Stand | 2026-09-14 |
-| Phase | Planung (Pflichtenheft V1.0 Entwurf) |
+| Phase | Planung V1.1 (Review nachgezogen) |
 | Repo | `MPunktBPunkt/esp32.bt-gateway` |
 | Firmware | nicht gestartet |
-| Hardware | klassischer ESP32 (Ziel), noch kein festes Board |
-| Coexistence-Gate | offen (Gate vor Audio-Pipeline) |
-| PiDrive-Integration | spezifiziert, nicht implementiert |
+| Hardware | klassischer ESP32 (WROOM; Plan B WROVER) |
+| Coexistence-Gate | STA+A2DP und SoftAP+A2DP |
+| ESP-Hub | Pflicht (USB/OTA/Register) |
+| PiDrive | Anker v0.11.127; Integration spezifiziert |
 
 ## Aktueller Fokus
 
-- Konzept + Pflichtenheft im Repo verankern
-- Offene Architekturentscheidungen klären (siehe `docs/planung/OFFENE-PUNKTE.md`)
-- Danach: detaillierte Zustandsübergänge, PDAP-Header, FreeRTOS-Prioritäten
-- Parallel: Start Phase 0 (Analyzer + A2DP-Testton)
+- A1–A16 bestätigen oder vertagen
+- Danach: `ZUSTANDSAUTOMAT.md`, `PDAP.md`, `FREERTOS.md` + Phase‑0-Skeleton
 
 ## Blocker / Risiken
 
-1. **WiFi + Classic-BT Coexistence** auf dem klassischen ESP32 — hartes Gate
-2. BMW NBT Evo AVRCP-/Metadata-Verhalten noch unvermessen
-3. Stack-Wahl ESP-IDF Bluedroid vs. bestehende PlatformIO-Welt der anderen `esp32.*`-Projekte
+1. WiFi + Classic-BT Coexistence  
+2. BMW AVRCP/Metadata unvermessen  
+3. RAM/CPU WROOM; A2DP 44.1 vs 48  
+4. Pi PCM-Contract / DAB Direct-ALSA  
 
 ## Letzte Änderung
 
-- Repository angelegt, Planungsordner mit Konzept / Pflichtenheft / offenen Punkten
+- Planungs-Review V1.1 (`REVIEW-V1.1.md`); Lücken Discovery/Migration/Latenz/RAM nachgezogen; Push Planung
