@@ -1,10 +1,23 @@
 # Offene Punkte & Planungsentscheidungen
 
-Stand: 2026-09-15 (Planung **V2.0** — Teil A Hub/OTA verbindlich, Stack offen). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
+Stand: 2026-09-15 (Planung **V2.0+** — Auftrag 4: Pfad-Mapping, Flash-Proxy, P-F1–P-F5). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
 
-Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md), [REVIEW-V1.3.md](REVIEW-V1.3.md).  
-Aufträge: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md), [AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md).  
+Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md), [REVIEW-V1.3.md](REVIEW-V1.3.md), [REVIEW-V1.4.md](REVIEW-V1.4.md).  
+Aufträge: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md), [AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md), [AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md).  
 Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md) · Flash: [FLASH-BUDGET.md](FLASH-BUDGET.md).
+
+---
+
+## Owner-Fragen (Q12–Q13 neu)
+
+| # | Frage | Blockiert |
+|---|-------|-----------|
+| Q1–Q5 | siehe Auftrag 2 | A17/A18 |
+| Q6–Q11 | siehe Auftrag 3 | A16, OTA-Policy, A21 |
+| **Q12** | Wo werden ESP32-Projekte gebaut? (Planungs-Host ohne Toolchain) | Flash-Messung → **A17** → Firmware |
+| **Q13** | Menükanal von Anfang an paginiert spezifizieren, oder erst nach Phase −1? | §2.24 / A18 |
+
+Fahrzeug-Pi als Build-Host **nicht** empfohlen (Auftrag 4).
 
 ---
 
@@ -71,15 +84,25 @@ Ideen priorisieren, **bevor** wir am Gate scheitern:
 
 **Status:** □ offen / □ bestätigt
 
-### A4. Auth / Pairing-Modell BMW
+### A4. Auth / Pairing-Modell BMW — inkl. Bestätigungsdialog
 
 - Feste MAC / Bonding-Datei auf ESP?
 - Wer initiiert Connect — ESP immer, oder nur auf Pi-Command?
 - Sichtbarer BT-Name: `PiDrive` / `esp32.bt-gateway` / konfigurierbar?
+- **Praxis (Owner):** Beim Koppeln Handy↔iDrive wartet das Fahrzeug auf eine **aktive Bestätigung am Handy**. Ohne die Dialog-Bestätigung kommt keine BT-Verbindung zustande. Der ESP hat kein Display — derselbe Dialog muss woanders landen.
 
-**Empfehlung:** Konfigurierbarer Name; Bonding persistent in NVS; Connect-Policy: auto-reconnect zu gebondetem Gerät, manuell über WebUI/PDAP überschreibbar.
+**Empfehlung — zweistufig:**
 
-**Status:** □ offen / □ bestätigt
+| Phase | Verhalten |
+|-------|-----------|
+| **Erst-Pairing** | Expliziter, zeitlich begrenzter **Pairing-Modus** (WebUI / SoftAP-Setup / PDAP). ESP discoverable. SSP-Anfrage vom BMW → **Code + Gerätename in der WebUI** (und `ios.pairing`). Nutzer bestätigt in der WebUI (= Ersatz für den Handy-Dialog) und am iDrive, falls das Auto ebenfalls fragt. Timeout ~60–120 s → Pairing abbrechen, nicht still auto-akzeptieren außerhalb des Modus. |
+| **Danach (Alltag)** | Bonding-Keys in **NVS**. Reconnect ohne erneute Bestätigung. Neue Pairing-Anfragen **ablehnen**, solange Pairing-Modus aus (Schutz vor Fremdgeräten während der Fahrt). |
+
+**IO-Capabilities:** Zuerst messen (Phase 0), welches SSP-Verfahren das NBT tatsächlich verlangt (Numeric Comparison / Passkey / Just Works). WebUI-Confirm deckt Numeric Comparison und Passkey ab. Just Works nur **innerhalb** des Pairing-Fensters auto-accept — nie dauerhaft „alles annehmen“.
+
+**Connect-Policy:** Auto-Reconnect zum gebondeten BMW; manuell über WebUI/PDAP überschreibbar. Name konfigurierbar (A15), Default während Migration `PiDrive-GW`.
+
+**Status:** □ offen / □ bestätigt (Richtung: WebUI als Handy-Dialog-Ersatz)
 
 ### A5. Repo-Scope PiDrive
 
@@ -226,13 +249,15 @@ Entscheidungsvorlage — **erst nach Phase −1 und Flash-Budget-Messung** festl
 
 Wenn S3 kommt: Abbildung Ordner / Sender / Aktionen / Schalter auf Folder-Items und Media-Elements; Aktionen, nach denen das Auto Wiedergabe erwartet (`PlayItem`); Baum vollständig vs. seitenweise (`GetFolderItems` ist paginiert); `uid_counter`-Invalidierung ohne Permanent-Reload bei jedem BT-Statuswechsel.
 
-**Vorschlag:** Baum vollständig mit Größenbudget (Skizze Auftrag §4.6 / Pflichtenheft §2.24); darüber Lazy-Loading. `uid_counter` nur bei Änderung der UID-Menge — gespiegelt aus PiDrive-Auftrag M1.
+**Vorschlag:** Seitenbasiertes Abrufmodell von Anfang an (P-F5 / golden tree ≈ 98 KB; Q13). `uid_counter` nur bei Änderung der UID-Menge — gespiegelt aus PiDrive-Auftrag M1. Pi: paginierter Export (**P13**).
 
-**Status:** □ offen (nach Phase −1 / S3-Entscheidung) / □ bestätigt
+**Status:** □ offen (nach Phase −1 / S3-Entscheidung / Q13) / □ bestätigt
 
 ### A19. Multi-Source über den Pi (nicht ESP-Relay)
 
 Formal: Handy/Tablet koppeln am **Pi als A2DP-Sink** (F4 — Sink+Source gleichzeitig auf ESP unmöglich). PipeWire führt in denselben Capture-Punkt wie DAB/Webradio; Umschaltung über bestehendes PiDrive-Menü. Folge: PiDrive wird AVRCP **Controller** gegenüber dem Handy und muss Skip vom BMW durchreichen → neuer Fall in `map_event()` / Event-Contract ([PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) §2.9/§8; Arbeitspaket in `pidrive` G3).
+
+**Aufwand (P-F3):** Installation setzt WirePlumber auf `bluez5.roles = [ a2dp_source ]` only (`install.sh` inline; `pipewire-config/` tot). Sink-Rolle = **kein Nullaufwand** — WP-Rollen erweitern (**P15**), nicht „bereits erledigt“.
 
 **Status:** □ offen / □ bestätigt (Richtung mit Eigentümer abgestimmt laut Auftrag)
 
@@ -288,7 +313,10 @@ Im Fahrzeug ist der Hub nicht erreichbar (R24). Hub-OTA (Stufe 1) funktioniert n
 | R22 | BTstack-Lizenz (nicht-kommerziell) kollidiert mit späterer Weitergabe | vor A17 klären; LICENSE/README |
 | R23 | Menübaum sprengt WROOM-RAM (große lokale Listen) | Größenbudget A18; Lazy-Loading |
 | R24 | Hub im Fahrzeug nicht erreichbar; OTA-URL enthält Heim-IP | Stufe 2 + lokales Web-OTA Pflicht (A21) |
-| R25 | App-Image überschreitet OTA-Slot `0x1E0000` | Frühe Messung ([FLASH-BUDGET.md](FLASH-BUDGET.md)); eingebettete WebUI; Eskalation &lt; 20 % → A16/Q6; **Slots nicht vergrößern** |
+| R25 | App-Image überschreitet OTA-Slot `0x1E0000` | Frühe Messung ([FLASH-BUDGET.md](FLASH-BUDGET.md)); eingebettete WebUI; Eskalation &lt; 20 % → A16/Q6; **Slots nicht vergrößern**; Proxy Arduino pessimistisch — kein A16 auf Proxy-Basis |
+| R26 | Pi-Metadaten nur bei Menü-`rev` (P-F1) → Display tot im Gateway-Pfad | **P12** vor Metadata-Abnahme |
+| R27 | Vollbaum ≈ 98 KB ohne Paging (P-F5) → Heap / PDAP | Paginiertes Menü Pflicht; Nicht-Ziel Volltransfer |
+| R28 | iDrive wartet auf Pairing-Bestätigung am Remote (Handy-Dialog) — ESP ohne Display | Zeitlich begrenzter Pairing-Modus + WebUI-Confirm (A4); Bonding NVS; Phase 0 SSP-Verfahren messen |
 
 ---
 

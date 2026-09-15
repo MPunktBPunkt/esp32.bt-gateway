@@ -81,18 +81,22 @@ Kein Beispiel-Code ins Gateway-Repo kopieren — nur Zahlen und Methode hier.
 | BTstack `a2dp_source_demo` (stock) | — | — | — | — | **ausstehend** |
 | BTstack + WiFi + HTTP | — | — | — | — | **ausstehend** |
 
-**Messstatus:** Methode und Budgetgrenze sind fest. Stack-Vergleichszahlen fehlen, weil auf dem Planungs-Host kein `idf.py` / ESP-IDF installiert ist. Die Messung ist **Pflicht-Input für A17** und darf nicht durch Spekulation ersetzt werden.
+**Messstatus:** Methode und Budgetgrenze sind fest. Stack-Vergleichszahlen fehlen, weil auf dem Planungs-Host keine ESP32-Toolchain liegt (`idf.py` / PlatformIO / arduino-cli / esptool geprüft — Auftrag 4). Die Messung ist **Pflicht-Input für A17** und darf nicht durch Spekulation ersetzt werden. Build-Host: **Q12**.
 
 ### 4.2 Familien-Proxy (nur Größenordnung, kein Stack-Vergleich)
 
-Arduino-Familie, kein Classic-BT-Source — zeigt, was **WiFi + HTTP + WebUI** allein schon kosten:
+Arduino-Familie, kein Classic-BT-Source — zeigt, was **WiFi + HTTP + WebUI (+ Audio)** allein schon kosten. Leitwert: **`webradio`** (näher am Gateway als `esp-hub-base`).
 
-| Artefakt | Bytes | % von `0x1E0000` | Hinweis |
+| Artefakt | Bytes | % von `0x1E0000` | Enthält |
 |----------|------:|-----------------:|---------|
-| `esp-hub-base.1.7.0.esp32.bin` | 1 201 152 | **61 %** | Hub-Referenz-App (Arduino), OTA-fähig |
-| Reserve nach diesem Proxy | ≈ 764 928 | **39 %** | Rest für Classic-BT + SBC + PDAP + IDF-Overhead |
+| `esp-hub-base.1.7.0.esp32.bin` | 1 201 152 | 61 % | WiFi, HTTP, WebUI |
+| **`webradio.2.4.0.esp32.bin`** | **1 246 448** | **63 %** | + Audio-Dekodierung/-Ausgabe |
+| `io-control.1.6.1.esp32.bin` | 1 349 312 | **69 %** | Familien-Maximum der Stichprobe |
+| Reserve nach Band 61–69 % | ≈ 610–765 KB | **31–39 %** | Rest für Classic-BT + A2DP + SBC + PDAP + IDF-Overhead |
 
-**Lesart:** Selbst ohne A2DP liegt die Familien-App bereits bei ~60 % des OTA-Slots. BTstack + voller Gateway-Umfang kann die Reserve unter 20 % drücken — deshalb Spalte „Codegröße“ in A17 und frühe Upstream-Messung.
+**Lesart:** Selbst ohne Classic-BT liegt die Familien-App bei **61–69 %** des OTA-Slots. BTstack + voller Gateway-Umfang kann die Reserve unter 20 % drücken — deshalb Spalte „Codegröße“ in A17 und frühe Upstream-Messung.
+
+**Arduino-Vorbehalt (entscheidungsrelevant):** Alle Proxy-Artefakte sind **Arduino-Builds**. Ein ESP-IDF-Build gleicher Funktion fällt typisch schlanker aus (Arduino-Core wird unabhängig vom genutzten Umfang mitgelinkt). Die 61–69 % sind für einen IDF-Gateway daher **vermutlich pessimistisch**. Der Proxy begründet Risiko **R25** und die A17-Spalte „Codegröße“; er taugt **nicht**, um **A16/Q6** (8/16-MB-Modul) zu entscheiden. Die Eskalationsschwelle „&lt; 20 % Reserve“ gilt nur für **gemessene** IDF-/BTstack-Werte (§4.1), nicht für diesen Proxy.
 
 ### 4.3 WebUI-Nebenbedingung
 

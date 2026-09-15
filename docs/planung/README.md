@@ -8,6 +8,7 @@ Planungsunterlagen für `esp32.bt-gateway` (PiDrive Bluetooth Gateway).
 |-------|--------|
 | [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md) | Auftrag V1.2: Befunde F1–F5, Redaktionsplan |
 | [AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md) | Auftrag V2.0: Hub-Contract, Flash-Budget, OTA-Defer |
+| [AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md) | Pfad-Mapping, Flash-Proxy, PiDrive-Gegenbefunde P-F1–P-F5 |
 | [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md) | iDrive-BT-Steuerung, Kanäle, Stufen S1–S3, Stack-Matrix |
 | [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md) | Phase −1 (Pi) vor Phase 0 (ESP) und Coexistence |
 | [FLASH-BUDGET.md](FLASH-BUDGET.md) | Partitionen, Messmethode, Größenlimit für A17 |
@@ -19,7 +20,8 @@ Planungsunterlagen für `esp32.bt-gateway` (PiDrive Bluetooth Gateway).
 | [REVIEW-V1.1.md](REVIEW-V1.1.md) | Planungs-Review V1.1 |
 | [REVIEW-V1.2.md](REVIEW-V1.2.md) | Nachzüge F1–F5 |
 | [REVIEW-V1.3.md](REVIEW-V1.3.md) | Nachzüge H-F1–H-F9, Flash, Feld-OTA |
-| [OFFENE-PUNKTE.md](OFFENE-PUNKTE.md) | A1/A9/A17–A21, Risiken R24/R25, Freigabe E |
+| [REVIEW-V1.4.md](REVIEW-V1.4.md) | Pfad-Mapping, webradio-Proxy, P-F1–P-F5 |
+| [OFFENE-PUNKTE.md](OFFENE-PUNKTE.md) | A1/A9/A17–A21, Q12/Q13, Risiken R24–R27, Freigabe E |
 
 ## Kurzfassung
 

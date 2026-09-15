@@ -2,8 +2,8 @@
 
 **Dokumentstatus:** Planung V1.2 (Ideenfindung)  
 **Anlass:** [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md) · Befunde F1–F5  
-**Fahrzeug-Wahrheit:** `pidrive/iDriveBt.md` §2/§3 und `pidrive/RUNTIME_FLOWS.md` Abschnitt I — dort referenzieren, nicht hier duplizieren.  
-**Gegenstück PiDrive:** `pidrive/AUFTRAG-MENUE-UND-GATEWAY.md`
+**Fahrzeug-Wahrheit:** `pidrive/docs/fahrzeug/iDriveBt.md` §2/§3 und `pidrive/docs/architektur/RUNTIME_FLOWS.md` Abschnitt I — dort referenzieren, nicht hier duplizieren.  
+**Gegenstück PiDrive:** `pidrive/docs/auftraege/AUFTRAG-MENUE-UND-GATEWAY.md` · Pfad-Mapping: [AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md) Kap. 1
 
 ---
 
@@ -107,4 +107,4 @@ Durchführung Phase −1: `pidrive` (G1/G2, `tools/bmw_avrcp_probe.sh`). Hier nu
 - Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md)  
 - Pflichtenheft §2.9 / §2.10 / §2.24  
 - Offene Punkte A17–A20, R18–R23  
-- Fahrzeug: `pidrive/iDriveBt.md`, `pidrive/RUNTIME_FLOWS.md`  
+- Fahrzeug: `pidrive/docs/fahrzeug/iDriveBt.md`, `pidrive/docs/architektur/RUNTIME_FLOWS.md`  

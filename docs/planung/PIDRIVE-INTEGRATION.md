@@ -1,7 +1,7 @@
 # PiDrive-Integration — Ist-Analyse & Schnittstellenplan
 
-**Stand:** 2026-09-15 (V2.0: Feld-OTA Stufe 2 ergänzt)  
-**Quelle:** [MPunktBPunkt/pidrive](https://github.com/MPunktBPunkt/pidrive) @ `0.11.127`  
+**Stand:** 2026-09-15 (V2.0+: Pfad-Mapping, P-F1–P-F5, Feld-OTA Stufe 2)  
+**Quelle:** [MPunktBPunkt/pidrive](https://github.com/MPunktBPunkt/pidrive) @ `0.11.127` · Gegenbefunde gegen `54d39ff`  
 **Zweck:** Reale Codebasis in die Gateway-Planung einbeziehen (nicht nur Konzept-Annahmen).
 
 ---
@@ -39,10 +39,14 @@ systemd/
 ├── pipewire*.service / wireplumber.service
 └── pidrive-mpris2.conf
 
-Docs (Pflichtlektüre für Gateway):
-├── iDriveBt.md                   # Profile, AVRCP, SBC, Absolute Volume
-├── BluetoothError.md             # br-connection-profile-unavailable Root Cause
-├── ARCHITECTURE.md / RUNTIME_FLOWS.md
+Docs (Pflichtlektüre für Gateway) — nach Umzug, Mapping [AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md) Kap. 1:
+├── docs/fahrzeug/iDriveBt.md
+├── docs/betrieb/BluetoothError.md
+├── docs/architektur/ARCHITECTURE.md
+├── docs/architektur/RUNTIME_FLOWS.md
+├── docs/architektur/ZUSTANDSMASCHINE.md   # Quellenmodell; Gateway über commit_source()
+├── docs/menue/MENU-ERGONOMIE.md          # Beleg S3 / Tastendruck-Kosten
+└── docs/README.md                        # Dokumentindex
 ```
 
 ---
@@ -58,7 +62,7 @@ Docs (Pflichtlektüre für Gateway):
 
 **Hardware-Hinweis:** Pi nutzt oft CSR-USB-Dongle (`btusb`). Gateway-Pfad macht den Dongle für die **BMW-Verbindung** überflüssig; Pi-BT kann parallel für Kopfhörer o. Ä. bleiben (Produktentscheidung).
 
-**Dokumentierte Fragilität** (`BluetoothError.md`): A2DP-Fails waren oft D-Bus/`ReserveDevice1`/WirePlumber/MediaEndpoint — genau die Schicht, die der ESP eliminiert.
+**Dokumentierte Fragilität** (`docs/betrieb/BluetoothError.md`): A2DP-Fails waren oft D-Bus/`ReserveDevice1`/WirePlumber/MediaEndpoint — genau die Schicht, die der ESP eliminiert.
 
 ---
 
@@ -92,12 +96,12 @@ Players → PipeWire ─┬─ audio_output=bt      → bluez_output.* → BMW (
 
 Regel: Bei aktivem `gateway` **keine** zweite A2DP-Source zum selben BMW (sonst Doppel-Bonding / Button-Doppelteuerung).
 
-### 4.3 Kritischer Ist-Befund: DAB bypass’t PipeWire
+### 4.3 Kritischer Ist-Befund: DAB bypass’t PipeWire — unbedingt (P-F2)
 
-`modules/radio/dab_play.py` startet **welle-cli direkt auf ALSA** (`welle_direct_alsa: True`), entfernt `PULSE_*` / `PIPEWIRE_*` aus der Env und schreibt `/etc/asound.conf` auf die Klinke.
+`modules/radio/dab_play.py` startet **welle-cli direkt auf ALSA**, entfernt `PULSE_SERVER`/`PULSE_SINK` aus der Env (Begründung im Code: PipeWire-ALSA-Plugin blockiert Decode/PCM) und schreibt eine `asound.conf`, die den ALSA-Default auf die Klinke zwingt. Der Bypass ist **bedingungslos** — kein Schalter — und umgeht einen ungelösten PipeWire-Fehler, keine Bequemlichkeit.
 
-→ `audio route bt` liefert **kein DAB über Bluetooth**, solange dieser Pfad so bleibt.  
-→ Für Gateway-DAB muss DAB **explizit** über Pulse/PipeWire (oder gemeinsamen Capture-Punkt) laufen. Das ist ein **eigenes PiDrive-Arbeitspaket**, nicht nur ESP-Firmware.
+→ Ein Gateway-Ausgang, der Audio über PipeWire abgreift, bekommt von DAB **nichts**.  
+→ Gate für Gateway-DAB: **A7 + Behebung des PipeWire-Blockade-Fehlers**, nicht bloß „Bridge vorhanden“. Eigenes PiDrive-Arbeitspaket.
 
 ### 4.4 PCM-Format (Abweichung vom Pflichtenheft)
 
@@ -154,7 +158,7 @@ Ingress-Ziel: Zeile in **`/tmp/pidrive_cmd`** → `trigger_dispatcher`.
 1. `avrcp_trigger` — kontextsensitiv  
 2. `mpris2.PiDrivePlayer` — festes Mapping (Next→`down`, …)
 
-Dokumentiert in `iDriveBt.md`. Mit ESP als einzigem AVRCP-Target zum BMW entfällt BlueZ-AVRCP zum Auto; **gateway_client** soll PDAP-Events in die **Event-Schicht** einspeisen und **`map_event()` wiederverwenden** (eine Verhaltensquelle).
+Dokumentiert in `docs/fahrzeug/iDriveBt.md`. Mit ESP als einzigem AVRCP-Target zum BMW entfällt BlueZ-AVRCP zum Auto; **gateway_client** soll PDAP-Events in die **Event-Schicht** einspeisen und **`map_event()` wiederverwenden** (eine Verhaltensquelle).
 
 ### 5.4 Absolute Volume
 
@@ -168,8 +172,12 @@ Heute: `mpris2.update(S, menu)` → Title / Artist / Album (3 BMW-Zeilen).
 
 Quellen: Playback-Status, ICY (`mpv_meta`), DAB-DLS (`dab_dls`), Menü-Labels.
 
-**Gateway-Pfad:** dieselben Felder als PDAP `METADATA` schicken; ESP → AVRCP Element Attributes.  
+**P-F1 — kritisch `[BELEGT]`:** `_mpris2.update()` hängt in `main_core.py` an der Menü-`rev`-Bedingung, nicht am Titelwechsel. DAB-DLS / Webradio-ICY / lokale Titel ändern `menu_state.rev` nicht → **kein** Metadaten-Push, bis der Nutzer im Menü navigiert. Folge: Display-Aktualisierung im Gateway-Pfad scheitert stromaufwärts, egal wie gut AVRCP auf dem ESP ist.
+
+**Gateway-Pfad:** dieselben Felder als PDAP `METADATA` schicken; ESP → AVRCP Element Attributes — **Vorbedingung P12** (eigener Auslöser am Titelwechsel auf dem Pi).  
 Bei aktivem Gateway: MPRIS zum BMW optional idle (BlueZ nicht mehr Display-Owner). Status-JSON `/tmp/pidrive_status.json` bleibt Diagnose-Anker.
+
+Ohne P12 ist eine Abnahme „Metadaten im Display“ nicht möglich (Pflichtenheft §2.10 / Exit Metadata).
 
 ---
 
@@ -188,8 +196,12 @@ Bei aktivem Gateway: MPRIS zum BMW optional idle (BlueZ nicht mehr Display-Owner
 | P9 | CLI/Web: `gateway status`, route gateway | `cli/`, Web-API |
 | P10 | Bei `gateway`: onboard A2DP zum BMW idle / nicht auto-connect | `bt_connect` / `bt_watcher` Policy |
 | **P11** | **Firmware-Depot + CLI Stufe-2-OTA** (A21) | Depot + `pidrivectl gateway firmware …` — **nur in `pidrive`** |
+| **P12** | **Metadaten-Push am Titelwechsel** (P-F1) — eigener Auslöser, nicht an `menu_state.rev` | `main_core.py` / `mpris2` / später gateway_client |
+| **P13** | **Paginierter Menü-Export** (`uid`+`offset`+`count`) für PDAP/S3 (P-F5; golden tree ≈ 98 KB) | `menu_state.py` + PDAP-Client |
+| **P14** | Gateway-Quelle über `commit_source()` (nicht Parallelfelder wie `bt`) — Vorarbeit Stufe 2 in `ZUSTANDSMASCHINE.md` (P-F4) | Quellen-Zustandsmaschine |
+| **P15** | WirePlumber: `a2dp_sink` für Mehrquellen (P-F3); Installer erzeugt Config **inline** (`pipewire-config/` tot) | `install.sh` + WP-Rollen — Aufwand an A19 |
 
-**Repo-Scope (A5):** produktiver Client bleibt in **`pidrive`**; in `esp32.bt-gateway` nur PDAP-Contract + Python-Referenzclient (`clients/pdap_tester/`) + `/ota-upload`-Contract (§12).
+**Repo-Scope (A5):** produktiver Client bleibt in **`pidrive`**; in `esp32.bt-gateway` nur PDAP-Contract + Python-Referenzclient (`clients/pdap_tester/`) + `/ota-upload`-Contract (§12). **Kein Code in `pidrive` von hier aus.**
 
 ---
 
@@ -250,12 +262,12 @@ Nach ESP Phase 0 + Coexistence + Laptop-PCM-Test:
 6. `pidrive/settings.py`  
 7. `pidrive/trigger/trigger_dispatcher.py` + `td_hardware.py`  
 8. `pidrive/cli/cli.py`  
-9. `iDriveBt.md`, `BluetoothError.md`  
-10. `install.sh` / `scripts/fix-bt-a2dp.sh` (WP-Rollen: live = `a2dp_source` only)
+9. `docs/fahrzeug/iDriveBt.md`, `docs/betrieb/BluetoothError.md`, `docs/architektur/ZUSTANDSMASCHINE.md`  
+10. `install.sh` / `scripts/fix-bt-a2dp.sh` (WP-Rollen: live = `a2dp_source` only — P-F3)
 
 Referenz-Clone für Planung: lokal bei Bedarf `git clone https://github.com/MPunktBPunkt/pidrive.git`.
 
-**Pfad-Hinweis:** Im `pidrive`-Repo wandern Docs ggf. von der Wurzel nach `docs/` (dort D1–D3). Verweise oben auf `iDriveBt.md` usw. bleiben bewusst auf den **aktuell bekannten** Pfaden, bis eine Mapping-Tabelle geliefert wird — nicht raten ([AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md) Kap. 7).
+**Pfad-Mapping:** Der Docs-Umzug in `pidrive` ist vollzogen. Verbindliche alt→neu-Tabelle: [AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md) Kapitel 1 (gegen `54d39ff` verifiziert). Einstieg dort: `docs/README.md`. Geplante Probes `BMW-AVRCP-PROBE.md` / `BMW-DISPLAY-PROBE.md` erst verlinken, wenn sie existieren.
 
 ---
 
@@ -285,3 +297,17 @@ Schreibpfad = derselbe `ota_manager` wie bei Hub-`otaUrl` (kein zweiter OTA-Stac
 - Ablehnen großer Dauer-Retries während der Fahrt (gleiche Backoff-Philosophie).
 
 **Status OFFENE-PUNKTE:** A21 (Empfehlung a), R24. Pi-Implementierung nachziehen — Vermerk, kein Code hier.
+
+---
+
+## 13. Gegenbefunde PiDrive (P-F1–P-F5) — Randbedingungen
+
+Analyse gegen `pidrive` Commit `54d39ff` ([AUFTRAG-CURSOR-4.md](AUFTRAG-CURSOR-4.md) Kap. 3). Kein Code in `pidrive` ändern.
+
+| # | Befund | Folge hier |
+|---|--------|------------|
+| **P-F1** | Metadaten-Push nur bei Menü-`rev` | **P12** Pflicht vor Metadata-Abnahme; §2.10 |
+| **P-F2** | DAB-Bypass unbedingt (PW-Blockade) | Gate §2.17 = A7 + Fehlerbehebung |
+| **P-F3** | Pi nur `a2dp_source` in WP | A19 kein Nullaufwand — **P15** |
+| **P-F4** | `bt` nicht in `commit_source()` | Gateway-Quelle über Zustandsmaschine — **P14** |
+| **P-F5** | Menübaum ≈ 98 KB, kein Paging | PDAP-Menü **paginiert** — **P13**; Nicht-Ziel: vollständiger Baumtransfer |

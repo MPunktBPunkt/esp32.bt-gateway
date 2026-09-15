@@ -71,6 +71,7 @@ ESP Status (WiFi, BT, Buffer, KPIs) → PDAP → PiDrive
 - Vollständige BlueZ-Emulation
 - Automatisches Resampling oder Clock-Drift-Korrektur (nur Überwachung)
 - Dauerhaftes APSTA+A2DP ohne bestandenes Gate (siehe Betriebsmodi)
+- **Vollständiger Menübaum-Transfer über PDAP** (P-F5: golden tree ≈ 98 KB; AVRCP `GetFolderItems` ist seitenweise) — nur paginiert (`uid` + `offset` + `count`)
 
 **Erlaubt / geplant (nicht Nicht-Ziel):** Handy-Musik **über PiDrive** (Spotify Connect, Pi-A2DP-Sink, …) oder später als **PDAP-Client** (WLAN/SoftAP). Details: [BETRIEBSMODI.md](BETRIEBSMODI.md).
 
@@ -136,10 +137,13 @@ BOOT
 - `ERROR_xxx`
 - `BUFFERING` / `RECOVER`
 - `OTA_PENDING` (otaUrl in NVS, Warte auf `ota_allowed`)
+- `PAIRING_CONFIRM` (SSP-Code/Anfrage wartet auf WebUI-Bestätigung — A4)
 
 **Backoff-Strategie bei Disconnect:** 1 s → 2 s → 5 s → 10 s → 30 s → 60 s
 
 **Regel:** „BMW disconnected“ (Zündung aus) ist ein erwarteter Zustand und löst keinen Fehleralarm aus.
+
+**Pairing-Bestätigung (Praxis Handy↔iDrive):** Das Fahrzeug wartet oft auf aktive Zustimmung am Remote-Gerät. Am ESP ersetzt die **lokale WebUI** diesen Handy-Dialog (Code anzeigen + Bestätigen/Ablehnen) im zeitlich begrenzten Pairing-Modus; Bonding danach in NVS. Details: [OFFENE-PUNKTE.md](OFFENE-PUNKTE.md) **A4**.
 
 ---
 
@@ -212,7 +216,7 @@ SAMPLE_RATE | CHANNELS | FORMAT | FLAGS | PAYLOAD_LEN | CRC16
 
 **Discovery (Pi findet ESP):** Config `gateway_host` auf dem Pi (Pflicht-Minimum); empfohlen mDNS `bt-gateway.local` im STA-LAN; SoftAP-SSID-Muster für Setup/Auto. Details: [REVIEW-V1.1.md](REVIEW-V1.1.md) L1.
 
-**Optionaler Menü-Kanal (bei Ausbaustufe S3):** Control-Nachrichten zur generischen Item-Liste (Skizze §2.24 / Auftrag §4.6) — `MENU_TREE`, `MENU_INVALIDATE`, `MENU_ACTIVATE`, optional `MENU_PAGE_*`. Byte-genaue Structs bewusst offen.
+**Optionaler Menü-Kanal (bei Ausbaustufe S3):** Control-Nachrichten zur generischen Item-Liste — **paginiert** (`MENU_PAGE_REQ`/`MENU_PAGE_RSP` mit `uid`/`parent_uid` + `offset`/`start` + `count`; optional `MENU_INVALIDATE` / `MENU_ACTIVATE`). Kein einmaliger Vollbaum. Byte-genaue Structs bewusst offen; Skizze §2.24.
 
 ---
 
@@ -237,9 +241,11 @@ Target-seitig u. a. zu unterstützen: `SetBrowsedPlayer`, `ChangePath`, `GetFo
 
 ## 2.10 Metadata-Engine
 
-`[ENTWURF — Gate: Phase −1 (Zeilen?) + A17]` · Ergebnisort: A17 + Phase-0-Attribute-Log.
+`[ENTWURF — Gate: Phase −1 (Zeilen?) + A17 + PiDrive P12]` · Ergebnisort: A17 + Phase-0-Attribute-Log + P12.
 
 **Umsetzbarkeit ist stackabhängig (F1):** Die öffentliche Bluedroid-Target-API kann keine Element-Attributes setzen (`GetElementAttributes` wird nicht an die App gereicht; `esp_avrc_ct_send_metadata_cmd` gilt nur für die Controller-Rolle). Ohne BTstack oder IDF-Patch bleibt das BMW-Display im Gateway-Pfad leer — Entscheidung **A17** ([OFFENE-PUNKTE.md](OFFENE-PUNKTE.md)).
+
+**Vorbedingung PiDrive (P-F1 / P12):** Heute hängt `mpris2.update()` an der Menü-`rev`, nicht am Titelwechsel. Ohne eigenen Auslöser am Titelwechsel (DAB-DLS, ICY, …) erreicht keine Metadatenrichtung das Display zuverlässig — auch nicht über PDAP/AVRCP. Abnahme „Metadaten im Display“ erst nach P12.
 
 - Pi sendet strukturierte Metadata analog zu den heutigen MPRIS-Feldern (Title, Artist, Album, Source, Playing-Status …)
 - Felder stammen aus denselben Inputs wie `mpris2.update()` / Playback-Status / DLS / ICY
@@ -278,6 +284,7 @@ Funktionen:
 - Buffer- und SBC-Parameter
 - Logs / Export (RAM-Ringpuffer + Systemlog über WLAN — Fehlersuche ohne USB)
 - Verbindung manuell steuern (Connect / Disconnect / Reconnect)
+- **Pairing-Modus:** starten/stoppen; bei SSP-Anfrage **Passkey/Numeric-Code + Peer anzeigen**, Bestätigen/Ablehnen (Ersatz Handy-Dialog, A4); Timeout sichtbar
 - Hub-Host/Port konfigurieren; **lokales OTA-Upload** (`POST /ota-upload`, Stufe 2 — Pflicht, A21)
 
 **Einbettung:** WebUI-Assets werden **in die App eingebettet** (`EMBED_FILES` / `EMBED_TXTFILES`). Kein Asset-Dateisystem, keine eingebetteten Fonts, keine Chart-Bibliothek als Datei. Diagramme falls nötig: Inline-SVG wie `esp-hub-base`. Begründung: Flash-Budget ([FLASH-BUDGET.md](FLASH-BUDGET.md)).
@@ -298,7 +305,7 @@ Referenz: `iobroker.esp-hub` **v0.5.12** (lokal verifiziert; Auftrag bezog sich 
 - `POST /api/register` alle `interval` s (Default 30) mit `mac`, `name`,
   `hwType:"esp32"`, `chipModel`, `version` (SemVer), `ip`, `rssi`, `uptime`,
   `freeHeap`, `freeSketch`, `fwType:"bt-gateway"` und `ios` mit Gateway-KPIs
-  inklusive `otaState`.
+  inklusive `otaState` und bei Bedarf `pairing`.
 - `chipModel` ist **sicherheitsrelevant**: die Chip-Familien-Sperre des Hubs erlaubt
   den Flash, sobald eine Seite unbekannt ist. Ohne das Feld ist ein S3-Image auf
   diesem Gerät nicht mehr blockiert.
@@ -381,7 +388,8 @@ Empfohlener `ios`-Ausschnitt (klein, gleiche Funkstrecke wie A2DP):
   "underruns": { "type": "sensor", "value": 0 },
   "btRssi":    { "type": "sensor", "value": -64, "unit": "dBm" },
   "pdap":      { "type": "sensor", "value": "online" },
-  "otaState":  { "type": "sensor", "value": "pending (streaming)" }
+  "otaState":  { "type": "sensor", "value": "pending (streaming)" },
+  "pairing":   { "type": "sensor", "value": "confirm 123456" }
 }
 ```
 
@@ -432,20 +440,22 @@ Empfohlene Tasks (Prioritäten später festlegen):
 
 ## 2.17 PiDrive-Integration
 
-`[ENTWURF — Gate: A7 + PipeWire-Bridge auf dem Pi]` für DAB; Kern-Ankerpunkte sonst `[FIX]`-Richtung.
+`[ENTWURF — Gate: A7 + Behebung des PipeWire-Blockade-Fehlers auf dem Pi]` für DAB (P-F2: Bypass ist unbedingt, nicht optional); Kern-Ankerpunkte sonst `[FIX]`-Richtung.
 
-Detailliert: [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) (Analyse `pidrive` v0.11.127).
+Detailliert: [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) (Analyse `pidrive` v0.11.127; Gegenbefunde P-F1–P-F5 gegen `54d39ff`).
 
 Mindestumfang im Repo **`pidrive`** (nicht hier):
 
 - Neuer `integration/gateway_client.py` (+ optional `systemd/pidrive_gateway.service`)
 - `audio_output = gateway` als zusätzliche Route in `modules/audio.py` / `settings.py`
+- Gateway-Quelle über `commit_source()` (nicht Parallelfelder wie `bt` — P-F4 / P14)
 - PipeWire: virtueller Sink + Resample auf Contract-PCM
 - Parallelbetrieb: `audio_output = bt | gateway` (BlueZ-BMW-Pfad idle, wenn Gateway aktiv)
 - Reverse: PDAP-Events → `map_event()` → `/tmp/pidrive_cmd` (Trigger-Dispatcher unverändert)
-- Metadata-Push parallel zu / statt MPRIS-BMW-Pfad
-- **DAB:** separates Arbeitspaket — heute Direct-ALSA; ohne PW-Bridge kein Gateway-DAB
+- Metadata-Push am **Titelwechsel** (P12), parallel zu / statt MPRIS-BMW-Pfad
+- **DAB:** separates Arbeitspaket — heute Direct-ALSA wegen PW-Blockade; ohne Fehlerbehebung + PW-Pfad kein Gateway-DAB
 - **Firmware-Depot + `pidrivectl gateway firmware …`** (Stufe-2-Update, A21) — Pi-Seite nachziehen
+- Mehrquellen (A19): WirePlumber um `a2dp_sink` erweitern — **kein Nullaufwand** (P-F3 / P15)
 
 In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz) + `/ota-upload`-Contract.
 
@@ -492,7 +502,7 @@ In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz) + `
 | Coexistence | ≥ 30 min stabil A2DP + WiFi (Stack-spezifisch) |
 | A2DP | Stabiler Testton zum BMW |
 | AVRCP | Alle relevanten Commands geloggt und gemappt |
-| Metadata | Titel/Artist erscheinen korrekt (stackabhängig) |
+| Metadata | Titel/Artist erscheinen korrekt (stackabhängig) **und** PiDrive-P12 (Titelwechsel-Auslöser) |
 | Menü | **Menü im Fahrzeug bedienbar** — bei S1: Skip/Play-Ergonomie; bei S3: Browse-Liste. Messgröße aus PiDrive: Tastendrücke bis Ziel |
 | PDAP Audio | Stabiles PCM über WLAN |
 | Integration | Webradio (und ggf. Spotify/lokal) über Gateway hör- und steuerbar; DAB optional nach PW-Bridge |
@@ -522,7 +532,7 @@ In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz) + `
 1. ESP flashen (Hub-USB Merged @ `0x0` oder `idf.py`), SoftAP-Setup: WLAN, Hub-Host/Port (Default 8093), PDAP-PSK, BT-Gerätename (A15/A20)  
 2. **Warnung:** Merged-Write auf `0x0` überschreibt NVS mit `0xFF` → WLAN, Hub-Host, PSK und **BT-Bonding zum BMW** sind weg; erneutes Pairing am Fahrzeug nötig. Bei Recovery gewollt; Routine-Updates nur per OTA.  
 3. Am BMW altes Pi-/Dongle-Gerät entfernen oder nicht parallel verbinden  
-4. ESP pairen (Name konfigurierbar, Bonding in NVS)  
+4. **Pairing:** Am ESP Pairing-Modus in der WebUI starten → am iDrive Gerät hinzufügen → wenn das Auto auf Bestätigung wartet: **Code in der WebUI prüfen und bestätigen** (wie bisher am Handy) → Bonding in NVS. Ohne diesen Schritt bleibt die Verbindung oft aus (Owner-Praxis).  
 5. Pi: `gateway_host` + `audio_output=gateway`; BlueZ-Auto-Connect zum BMW aus  
 6. Coexistence-Gate + Webradio-Test vor DAB-Umbau  
 
@@ -540,9 +550,9 @@ In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz) + `
 
 ## 2.24 Menü-Transport
 
-`[ENTWURF — Gate: Phase −1 Browsing-Probe → S1 oder S3; dann A18]` · Ergebnisort: A18 + §2.24 Finalisierung.
+`[ENTWURF — Gate: Phase −1 Browsing-Probe → S1 oder S3; dann A18; Q13]` · Ergebnisort: A18 + §2.24 Finalisierung.
 
-Das Menü ist das zentrale Produktmerkmal der PiDrive-Bedienung am iDrive; es darf nicht nur in §2.10 „mitgemeint“ sein. Grundlage: [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md).
+Das Menü ist das zentrale Produktmerkmal der PiDrive-Bedienung am iDrive; es darf nicht nur in §2.10 „mitgemeint“ sein. Grundlage: [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md). Beleg Tastendruck-Kosten: `pidrive/docs/menue/MENU-ERGONOMIE.md`.
 
 | Stufe | Was der ESP tut | Was der Pi tut |
 |-------|-----------------|----------------|
@@ -551,18 +561,20 @@ Das Menü ist das zentrale Produktmerkmal der PiDrive-Bedienung am iDrive; es da
 
 **Designregel:** Der ESP kennt keine PiDrive-Geschäftslogik; er transportiert eine **generische, semantikfreie** Baumstruktur (Ordner/Items/Namen/playable). Bedeutung kennt nur der Client.
 
+**Paginierung Pflicht (P-F5):** `tests/golden/menu_tree.json` ≈ **98 KB**, Export ohne `offset`/`limit`. Ein Vollbaum über PDAP sprengt den ESP-Heap; AVRCP `GetFolderItems` fragt ohnehin seitenweise. PDAP-Menükanal = **seitenbasiertes Abrufmodell** (`uid`/`parent_uid` + `offset` + `count`). **Kein** vollständiger Baumtransfer (Nicht-Ziel §2.2). Pi-Seite: paginierter Export (**P13**). Timing der Spezifikation: **Q13**.
+
 **PDAP-Skizze (Diskussionsgrundlage, nicht byte-fest):**
 
 ```
-MENU_TREE      { uid_counter, nodes: [ { uid, parent_uid, kind: folder|item,
-                                         name, playable, attrs: {…} } ] }
 MENU_INVALIDATE{ uid_counter }                      Pi → ESP: Baum neu holen
 MENU_ACTIVATE  { uid }                              ESP → Pi: aus PlayItem
-MENU_PAGE_REQ  { parent_uid, start, count }         optional (Lazy-Loading)
+MENU_PAGE_REQ  { parent_uid, start, count }         Pflicht (Lazy-Loading)
 MENU_PAGE_RSP  { parent_uid, start, nodes[] }
 ```
 
-**Größenbudget (Vorschlag):** ≤ 32 KB / ≤ 400 Knoten im ESP; darüber `MENU_PAGE_*`. Heutige PiDrive-Bäume (~100–200 Knoten) passen; große lokale Bibliotheken nicht ohne Lazy-Loading (R23 / A18).
+Optional später: einmaliger kleiner Snapshot nur wenn Phase −1 / Q13 S1 ohne Browse rechtfertigt — Default bleibt paginiert.
+
+**Größenbudget (Vorschlag):** ≤ 32 KB Arbeitsmenge / ≤ 400 Knoten im ESP-Cache; darüber nur `MENU_PAGE_*`. Heutige PiDrive-Bäume (~100–200 Knoten, Export ≈ 98 KB JSON) brauchen Lazy-Loading (R23 / A18).
 
 **`uid_counter`:** nur erhöhen, wenn sich die UID-Menge ändert — nicht bei jedem Rebuild/`menu_rev` (sonst Permanent-Reload im Auto). Contract-Spiegel zu PiDrive M1.
 
@@ -578,6 +590,7 @@ Offen: Aktionen ohne Wiedergabe nach `PlayItem` (A18).
 | V1.1 | 2026-09 | Review-Nachzüge: Discovery, Rate, Migration, RAM, Betriebsmodi |
 | V1.2 | 2026-09-15 | F1–F5: Stack offen (A17), Phase −1, Menü-Transport §2.24, Weg F |
 | V2.0 | 2026-09-15 | Hub-Contract am Code (H-F1–H-F9), Partitionen/Flash-Budget, OTA-NVS-Defer, zweistufiger Update-Pfad; Teil A/B-Marken |
+| V2.0+ | 2026-09-15 | Auftrag 4: PiDrive-Pfad-Mapping; Flash-Proxy webradio; P-F1–P-F5 (P12–P15, paginiertes Menü, DAB-Gate); A4 Pairing-Confirm via WebUI (R28) |
 
 ---
 

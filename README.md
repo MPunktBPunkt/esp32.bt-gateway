@@ -16,7 +16,7 @@ Sink (BMW / Kopfhörer / …)
 
 ## Status
 
-**Phase:** Planung **V2.0** — Teil A verbindlich (Hub/OTA/Partitionen), Teil B Entwurf (Stack/Messungen)  
+**Phase:** Planung **V2.0+** — Teil A verbindlich (Hub/OTA/Partitionen), Teil B Entwurf; PiDrive-Pfade gemappt  
 **Firmware:** noch nicht gestartet  
 **Lebender Stand:** [`STATE.md`](STATE.md)  
 **Planung:** [`docs/planung/`](docs/planung/) — Konzept, Pflichtenheft V2.0, Flash-Budget, AVRCP, Messplan, Hub, Betriebsmodi, Reviews
@@ -45,8 +45,8 @@ Sink (BMW / Kopfhörer / …)
 
 ## Nächste Schritte
 
-1. Phase −1 am Pi (Browsing/Metadata) → [`docs/planung/PHASE-0-MESSPLAN.md`](docs/planung/PHASE-0-MESSPLAN.md)
-2. Flash-Budget messen → [`docs/planung/FLASH-BUDGET.md`](docs/planung/FLASH-BUDGET.md)
+1. **Q12** Build-Host klären → Flash-Budget messen → [`docs/planung/FLASH-BUDGET.md`](docs/planung/FLASH-BUDGET.md)
+2. Phase −1 am Pi (Browsing/Metadata) → [`docs/planung/PHASE-0-MESSPLAN.md`](docs/planung/PHASE-0-MESSPLAN.md)
 3. A17 Host-Stack entscheiden → [`docs/planung/OFFENE-PUNKTE.md`](docs/planung/OFFENE-PUNKTE.md)
 4. Danach: Zustandsautomat + PDAP + Phase‑0-Firmware
 
