@@ -1,9 +1,10 @@
 # Offene Punkte & Planungsentscheidungen
 
-Stand: 2026-09-15 (Planung V1.2 — BT-Steuerung / Stack). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
+Stand: 2026-09-15 (Planung **V2.0** — Teil A Hub/OTA verbindlich, Stack offen). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
 
-Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md).  
-Auftrag: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md). Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
+Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md), [REVIEW-V1.3.md](REVIEW-V1.3.md).  
+Aufträge: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md), [AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md).  
+Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md) · Flash: [FLASH-BUDGET.md](FLASH-BUDGET.md).
 
 ---
 
@@ -11,7 +12,8 @@ Auftrag: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md). Messplan: [PHASE-0-MESSPLAN
 
 ```
 0. Phase −1 am Pi (Browsing/Metadata-Probe)                  ← blockiert A17/A18
-1. A1 (ESP-IDF) bestätigt halten; A17 Host-Stack entscheiden + A9 Hub
+0b. Flash-Budget: Upstream-Beispiele messen (R25)            ← Input für A17
+1. A1 (ESP-IDF) bestätigt halten; A17 Host-Stack entscheiden + A9 Hub (bestätigt)
 2. Erst dann Komponentenstruktur / Phase-0-Skeleton
 3. Coexistence-Gate (WiFi + A2DP ≥ 30 min, inkl. Hub-Heartbeat; Stack-spezifisch)
 4. AVRCP-Analyzer am realen BMW (Phase 0)
@@ -20,10 +22,10 @@ Auftrag: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md). Messplan: [PHASE-0-MESSPLAN
 7. Metadata observe → implement (stackabhängig, F1)
 8. PiDrive: PW-Sink + gateway_client + audio_output=gateway
 9. DAB→PipeWire (eigenes PiDrive-Paket, falls Gateway-DAB nötig)
-10. Hub-OTA hardened (deferred while STREAMING) + Bin in Hub-Ablage
+10. Hub-OTA hardened (NVS-Defer while STREAMING) + Stufe-2-Depot (A21)
 ```
 
-Phase −1 **vor** A17. Phase 0 und Coexistence **vor** PDAP-Vollausbau. Keine Firmware-Ordner, solange A17 offen ist. PiDrive-Code erst nach stabilem Laptop→ESP→BMW-PCM.
+Phase −1 **und** Flash-Messung **vor** A17. Phase 0 und Coexistence **vor** PDAP-Vollausbau. Keine Firmware-Ordner, solange A17 offen ist. PiDrive-Code erst nach stabilem Laptop→ESP→BMW-PCM.
 
 **PiDrive-Ist-Analyse:** [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) (`pidrive` v0.11.127).  
 **Hub-Integration:** [HUB-INTEGRATION.md](HUB-INTEGRATION.md).  
@@ -122,7 +124,7 @@ Bei `audio_output=gateway` darf Pi-BlueZ **nicht** gleichzeitig AVRCP/A2DP zum s
 
 **Status:** □ offen / □ bestätigt
 
-### A9. ESP-Hub-Programmierung (Anforderung bestätigt)
+### A9. ESP-Hub-Programmierung — **bestätigt**
 
 Der ESP soll über `iobroker.esp-hub` programmierbar sein (USB-Flash + OTA-Push + Geräte-Status).
 
@@ -132,9 +134,9 @@ Der ESP soll über `iobroker.esp-hub` programmierbar sein (USB-Flash + OTA-Push 
 | **IDF-`HubClient` + Hub-USB/OTA** | passt; Compile-Tab entfällt |
 | Hub nur optional / später | widerspricht Anforderung |
 
-**Empfehlung:** Pflicht ab Feldgerät; Skeleton-Modul schon in Phase 0 mitplanen. Details: [HUB-INTEGRATION.md](HUB-INTEGRATION.md).
+**Verifiziert** gegen `iobroker.esp-hub` **v0.5.12** (`main.js`): OTA = Pull aus einmaliger `otaUrl` in Heartbeat-Antwort; USB-Flash frei wählbare Adresse Default `0x0` (Merged-Image ohne Adapteränderung); `chipModel` für Familien-Sperre; `ios` als JSON-String. Details: [AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md) Kap. 1 (H-F1–H-F9), [HUB-INTEGRATION.md](HUB-INTEGRATION.md), [REVIEW-V1.3.md](REVIEW-V1.3.md).
 
-**Status:** □ offen / ☑ Anforderung gesetzt (Umsetzungsweg: IDF-Client)
+**Status:** ☑ **bestätigt** (Umsetzungsweg: IDF-Client, keine Adapteränderung)
 
 ### A10. WiFi-Betriebsmodus (STA / SoftAP / APSTA)
 
@@ -198,25 +200,27 @@ Wenn kein PiDrive, aber Handy/Laptop PDAP-Session: Events an Session-Owner. Wenn
 
 **Status:** □ offen / □ bestätigt
 
-### A16. Hardware-Variante bei RAM-Engpass
+### A16. Hardware-Variante bei RAM-/Flash-Engpass
 
-WROOM zuerst; bei Heap/Underruns WROVER/PSRAM (kein S3). Bei S3 + Menübaum + BTstack + WiFi wird der Heap enger als in REVIEW L4 angenommen → Q5 / A16 früh mitdenken.
+WROOM zuerst; bei Heap/Underruns WROVER/PSRAM (kein S3). Bei S3 + Menübaum + BTstack + WiFi wird der Heap enger. Flash: 4 MB Dual-OTA ist Spezifikation; 8/16-MB-Modul nur nach R25-Eskalation (Q6) — weicht von Hub-Referenzhardware ab.
 
 **Status:** □ offen / □ bestätigt
 
 ### A17. Bluetooth-Host-Stack (herausgelöst aus A1)
 
-Entscheidungsvorlage — **erst nach Phase −1** festlegen. Siehe [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md) §4 und [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
+Entscheidungsvorlage — **erst nach Phase −1 und Flash-Budget-Messung** festlegen. Siehe [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md) §4, [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md), [FLASH-BUDGET.md](FLASH-BUDGET.md).
 
-| Option | Metadaten | Browsing | Aufwand | Risiko |
-|--------|-----------|----------|---------|--------|
-| Bluedroid unverändert | ⛔ | ⛔ | gering | Display bleibt leer → Projektziel verfehlt (F1/F2) |
-| Bluedroid + Patch in `bta_av_act.c` | ⚠ per Patch | ⛔ | mittel | Fork-Pflege bei jedem IDF-Update; S3 dauerhaft verbaut |
-| **BTstack auf ESP32** | ✅ API | ✅ API | höher (neuer Stack, eigener Coexistence-Nachweis) | Controller-Eigenheiten ESP32-Port; Lizenz nicht-kommerziell (R21/R22) |
+| Option | Metadaten | Browsing | Aufwand | Risiko | Codegröße |
+|--------|-----------|----------|---------|--------|-----------|
+| Bluedroid unverändert | ⛔ | ⛔ | gering | Display bleibt leer → Projektziel verfehlt (F1/F2) | Messung ausstehend — typisch kleiner als BTstack |
+| Bluedroid + Patch in `bta_av_act.c` | ⚠ per Patch | ⛔ | mittel | Fork-Pflege bei jedem IDF-Update; S3 dauerhaft verbaut | ähnlich Bluedroid + Patch-Overhead |
+| **BTstack auf ESP32** | ✅ API | ✅ API | höher (neuer Stack, eigener Coexistence-Nachweis) | Controller-Eigenheiten ESP32-Port; Lizenz nicht-kommerziell (R21/R22) | **kritisch:** kann mit WiFi+WebUI OTA-Budget reißen (R25) |
 
-**Empfehlung:** **BTstack**, sobald Phase −1 zeigt, dass Metadaten im Fahrzeug ankommen — und **zwingend**, falls Browsing möglich ist. Lizenzfrage Q2 vorher klären.
+**Regel:** Eine Stack-Entscheidung **ohne** Größenmessung ist unzulässig. Unter 20 % Reserve vs. `0x1E0000` → Owner eskalieren (Q6), nicht still Dual-OTA opfern.
 
-**Status:** □ offen (blockiert durch Phase −1) / □ bestätigt
+**Empfehlung:** **BTstack**, sobald Phase −1 zeigt, dass Metadaten im Fahrzeug ankommen — und **zwingend**, falls Browsing möglich ist — **sofern** das Flash-Budget trägt. Lizenzfrage Q2 vorher klären.
+
+**Status:** □ offen (blockiert durch Phase −1 **und** Flash-Messung) / □ bestätigt
 
 ### A18. Menü-Transport und Semantik (bei S3)
 
@@ -240,6 +244,20 @@ Bei S3 erscheint der Gateway in der Player-Liste des Autos. Zusammen mit A15 (BT
 
 **Status:** □ offen / □ bestätigt
 
+### A21. Feld-Update-Pfad Stufe 2 (PiDrive als Firmware-Depot)
+
+Im Fahrzeug ist der Hub nicht erreichbar (R24). Hub-OTA (Stufe 1) funktioniert nur im Carport/Heim-WLAN.
+
+| Option | Bewertung |
+|--------|-----------|
+| **(a) Stufe 2:** Pi hält Image vor, `POST /ota-upload` am Gateway (PSK, gleiche Prüfungen wie Hub-OTA) | empfohlen — kabellos auch unterwegs |
+| (b) nur Carport-Updates; im Auto USB | widerspricht „kabellos“ zur Hälfte |
+| (c) APSTA mit Route nach Hause | fragil, Coexistence, oft keine Route |
+
+**Empfehlung:** **(a)**. Gateway-Contract in [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md); Pi-Implementierung (`pidrivectl gateway firmware fetch|list|push`) im **`pidrive`-Repo** nachziehen — hier nur spezifizieren.
+
+**Status:** □ offen / □ bestätigt (Empfehlung a; Owner-Frage Q11)
+
 ---
 
 ## B. Technische Risiken (bewusst tracken)
@@ -256,8 +274,8 @@ Bei S3 erscheint der Gateway in der Player-Liste des Autos. Zusammen mit A15 (BT
 | R8 | DAB Direct-ALSA → kein Gateway-Audio | Explizites DAB-Paket oder V1 ohne DAB |
 | R9 | Dual AVRCP (BlueZ+ESP) → Doppeltrigger | Policy: ein Target zum BMW |
 | R10 | Absolute Volume / DSP-Konflikte | Wie PiDrive: Vol± als Events, kein Absolutkampf |
-| R11 | Hub-OTA während Stream | `ota_allowed` nur außerhalb STREAMING |
-| R12 | Merged- vs. App-Bin im Hub verwechselt | Release-Checkliste + Naming |
+| R11 | Hub-OTA während Stream / URL verloren | NVS-Persistenz + `OTA_PENDING`; nie URL verwerfen |
+| R12 | Merged- vs. App-Bin im Hub verwechselt | Naming + App-Desc-Magic `0xABCD5432` @ `0x20` |
 | R13 | SoftAP/APSTA + A2DP Dropout | Gate-Tests §2.4 erweitern; Fallback Pi-Hotspot |
 | R14 | Zwei PDAP-Clients kämpfen um Session | busy-reject / PiDrive-Priority |
 | R15 | A2DP 48 kHz vs. PCM 44,1 → Pitch/Reject | Force 44,1 oder ESP-Resample |
@@ -269,28 +287,51 @@ Bei S3 erscheint der Gateway in der Player-Liste des Autos. Zusammen mit A15 (BT
 | R21 | BTstack-ESP32-Port: Controller-Eigenheiten, Coexistence unbekannt | Gate §2.4 mit BTstack wiederholen |
 | R22 | BTstack-Lizenz (nicht-kommerziell) kollidiert mit späterer Weitergabe | vor A17 klären; LICENSE/README |
 | R23 | Menübaum sprengt WROOM-RAM (große lokale Listen) | Größenbudget A18; Lazy-Loading |
+| R24 | Hub im Fahrzeug nicht erreichbar; OTA-URL enthält Heim-IP | Stufe 2 + lokales Web-OTA Pflicht (A21) |
+| R25 | App-Image überschreitet OTA-Slot `0x1E0000` | Frühe Messung ([FLASH-BUDGET.md](FLASH-BUDGET.md)); eingebettete WebUI; Eskalation &lt; 20 % → A16/Q6; **Slots nicht vergrößern** |
 
 ---
 
 ## C. Was bewusst noch *nicht* spezifiziert wird
 
-Bis Phase −1 / Phase-0-Messung / A17:
+Bis Phase −1 / Phase-0-Messung / A17 / Flash-Messung:
 
 - Konkrete AVRCP→Trigger-Mapping-Tabelle
 - Finale Bitpool- / Buffer-Defaults (nur Startwerte)
 - Exakte FreeRTOS-Prioritäten und Core-Pinning
 - Byte-genaue PDAP-Structs (nur Header-Skizze; Menü-Kanal erst recht nur Skizze)
 - Komponentenliste unter `components/` (hängt an A17)
+- Gemessene Codegrößen Bluedroid vs. BTstack (Methode steht)
 
 Diese Dateien kommen als Nächstes nach Freigabe / A17:
 
 - `docs/planung/ZUSTANDSAUTOMAT.md`
 - `docs/planung/PDAP.md`
 - `docs/planung/FREERTOS.md`
+- `docs/RELEASE.md` (Checkliste vor erstem Feldgerät)
 
 ---
 
-## D. Vorgeschlagene Ordnerstruktur (Firmware, später)
+## D. Partitionstabelle & Ordnerstruktur (Firmware, später)
+
+### D.1 Partitionstabelle — **festgeschrieben** (Spezifikation)
+
+Keine `partitions.csv` vor A17. Offsets später ändern = USB-Flash im Feld.
+
+```
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x8000
+otadata,    data, ota,      0x11000,  0x2000
+phy_init,   data, phy,      0x13000,  0x1000
+coredump,   data, coredump, 0x14000,  0xC000
+ota_0,      app,  ota_0,    0x20000,  0x1E0000
+ota_1,      app,  ota_1,    0x200000, 0x1E0000
+logs,       data, littlefs, 0x3E0000, 0x20000
+```
+
+Rechnung: `0x3E0000 + 0x20000 = 0x400000` (4 MB exakt). App-Slots 64-KB-ausgerichtet. Kein Factory. `logs` nicht in App umwidmen. Details: [FLASH-BUDGET.md](FLASH-BUDGET.md), Pflichtenheft §2.12a.
+
+### D.2 Vorgeschlagene Ordnerstruktur
 
 ```
 esp32.bt-gateway/
@@ -298,6 +339,7 @@ esp32.bt-gateway/
 ├── main/                  ← ESP-IDF app
 ├── components/
 │   ├── hub_client/        ← POST /api/register + otaUrl (Familie-Contract)
+│   ├── ota_manager/       ← NVS-Defer, App-Desc, Rollback, /ota-upload
 │   ├── pdap/
 │   ├── …                  ← A2DP/AVRCP: Bluedroid-Module ODER BTstack-Profile + menu_target
 │   ├── jitter_buffer/
@@ -308,7 +350,7 @@ esp32.bt-gateway/
 └── tools/
 ```
 
-**Noch nicht anlegen**, bis A17 entschieden ist. `hub_client` mit Phase‑0-Skeleton mitplanen, sobald Stack steht. Bei BTstack heißen die BT-Komponenten anders als `a2dp_source`/`avrcp_target`-Eigenbau.
+**Noch nicht anlegen**, bis A17 entschieden ist. `hub_client` / `ota_manager` mit Phase‑0-Skeleton mitplanen, sobald Stack steht. Bei BTstack heißen die BT-Komponenten anders als `a2dp_source`/`avrcp_target`-Eigenbau.
 
 ---
 
@@ -317,10 +359,14 @@ esp32.bt-gateway/
 - [ ] Konzept inhaltlich OK
 - [ ] Nicht-Ziele OK (inkl. Multi-Source über Pi, F4)
 - [ ] Phase −1 + Phase 0 + Coexistence als erste Arbeitspakete OK
-- [ ] A1, A17–A20 und A2–A16 entschieden oder bewusst vertagt
+- [ ] A1, A17–A21 und A2–A16 entschieden oder bewusst vertagt
+- [ ] **Teil A/B-Marken im Pflichtenheft gesetzt** (V2.0)
+- [ ] **Hub-Contract gegen `main.js` verifiziert (A9)**
+- [ ] **Flash-Budget gemessen (R25)** — Methode steht; Upstream-Zahlen noch ausstehend
+- [ ] **Update-Pfad Stufe 2 entschieden (A21 / Q11)**
 - [ ] PiDrive-Integrationsplan OK ([PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md))
 - [ ] Hub-Programmierung OK ([HUB-INTEGRATION.md](HUB-INTEGRATION.md))
 - [ ] Betriebsmodi / Handy / WiFi OK ([BETRIEBSMODI.md](BETRIEBSMODI.md))
 - [ ] AVRCP-Möglichkeiten OK ([AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md))
-- [ ] Review-Nachzüge OK ([REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md))
+- [ ] Review-Nachzüge OK ([REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md), [REVIEW-V1.3.md](REVIEW-V1.3.md))
 - [ ] Danach: Zustandsautomat + PDAP-Header + Phase-0-Skeleton (nach A17)

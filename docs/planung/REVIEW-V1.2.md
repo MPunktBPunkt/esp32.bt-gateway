@@ -53,15 +53,15 @@ SDP wirbt Browsing; Target beantwortet nur Scope Media Player List. BMW-Versuch 
 
 ## Dokument-Nachzüge (Checkliste)
 
-| Dokument | Nachzug |
-|----------|---------|
-| `AVRCP-MOEGLICHKEITEN.md` | neu |
-| `PHASE-0-MESSPLAN.md` | neu (Phase −1) |
-| `OFFENE-PUNKTE.md` | A1 entschärft; A17–A20; R18–R23 |
-| `PFLICHTENHEFT.md` | §2.2, §2.3, §2.8, §2.9, §2.10, §2.16, §2.20, §2.24 |
-| `BETRIEBSMODI.md` | Weg E/F |
-| `KONZEPT.md` | §1.2/§1.3 Nutzen Menü; Designregel 1; Phase −1 |
-| `STATE.md` / `README.md` | V1.2-Status |
+| Dokument | Nachzug | Status |
+|----------|---------|--------|
+| `AVRCP-MOEGLICHKEITEN.md` | neu | erledigt |
+| `PHASE-0-MESSPLAN.md` | neu (Phase −1) | erledigt |
+| `OFFENE-PUNKTE.md` | A1 entschärft; A17–A20; R18–R23 | erledigt (V1.2); erweitert in V1.3 |
+| `PFLICHTENHEFT.md` | §2.2, §2.3, §2.8, §2.9, §2.10, §2.16, §2.20, §2.24 | erledigt → weiter V2.0 |
+| `BETRIEBSMODI.md` | Weg E/F | erledigt |
+| `KONZEPT.md` | §1.2/§1.3 Nutzen Menü; Designregel 1; Phase −1 | erledigt |
+| `STATE.md` / `README.md` | V1.2-Status | erledigt → V2.0 in REVIEW-V1.3 |
 
 ---
 

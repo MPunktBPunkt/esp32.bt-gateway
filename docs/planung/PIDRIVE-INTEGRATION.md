@@ -1,6 +1,6 @@
 # PiDrive-Integration — Ist-Analyse & Schnittstellenplan
 
-**Stand:** 2026-09-14  
+**Stand:** 2026-09-15 (V2.0: Feld-OTA Stufe 2 ergänzt)  
 **Quelle:** [MPunktBPunkt/pidrive](https://github.com/MPunktBPunkt/pidrive) @ `0.11.127`  
 **Zweck:** Reale Codebasis in die Gateway-Planung einbeziehen (nicht nur Konzept-Annahmen).
 
@@ -187,8 +187,9 @@ Bei aktivem Gateway: MPRIS zum BMW optional idle (BlueZ nicht mehr Display-Owner
 | P8 | DAB über PW/Pulse statt Direct-ALSA (wenn Gateway DAB können soll) | `dab_play.py` — **separates Risiko** |
 | P9 | CLI/Web: `gateway status`, route gateway | `cli/`, Web-API |
 | P10 | Bei `gateway`: onboard A2DP zum BMW idle / nicht auto-connect | `bt_connect` / `bt_watcher` Policy |
+| **P11** | **Firmware-Depot + CLI Stufe-2-OTA** (A21) | Depot + `pidrivectl gateway firmware …` — **nur in `pidrive`** |
 
-**Repo-Scope (A5):** produktiver Client bleibt in **`pidrive`**; in `esp32.bt-gateway` nur PDAP-Contract + Python-Referenzclient (`clients/pdap_tester/`).
+**Repo-Scope (A5):** produktiver Client bleibt in **`pidrive`**; in `esp32.bt-gateway` nur PDAP-Contract + Python-Referenzclient (`clients/pdap_tester/`) + `/ota-upload`-Contract (§12).
 
 ---
 
@@ -253,3 +254,34 @@ Nach ESP Phase 0 + Coexistence + Laptop-PCM-Test:
 10. `install.sh` / `scripts/fix-bt-a2dp.sh` (WP-Rollen: live = `a2dp_source` only)
 
 Referenz-Clone für Planung: lokal bei Bedarf `git clone https://github.com/MPunktBPunkt/pidrive.git`.
+
+**Pfad-Hinweis:** Im `pidrive`-Repo wandern Docs ggf. von der Wurzel nach `docs/` (dort D1–D3). Verweise oben auf `iDriveBt.md` usw. bleiben bewusst auf den **aktuell bekannten** Pfaden, bis eine Mapping-Tabelle geliefert wird — nicht raten ([AUFTRAG-CURSOR-3.md](AUFTRAG-CURSOR-3.md) Kap. 7).
+
+---
+
+## 12. Feld-Update Stufe 2 — Contract (Gateway + PiDrive-Depot)
+
+**Warum:** Der ioBroker-Hub läuft zu Hause. Im Auto (Pi-Hotspot oder ESP-SoftAP) gibt es keine Route; die Hub-`otaUrl` enthält die Heim-IP. Hub-OTA = Stufe 1 (Carport). Stufe 2 = **primäre Feld-Update-Strecke** (A21, R24). Details: [HUB-INTEGRATION.md](HUB-INTEGRATION.md), Pflichtenheft §2.12a.
+
+### 12.1 Gateway-Endpunkt (dieses Repo spezifiziert, Implementierung nach A17)
+
+| | |
+|--|--|
+| Methode / Pfad | `POST /ota-upload` |
+| Auth | PDAP-PSK (Header oder Query — final in PDAP.md); ohne Auth → 401 |
+| Body | App-only Firmware-Binärstream (`application/octet-stream`) oder multipart mit einer `.bin` |
+| Ablehnen wenn | Zustand `STREAMING` (gleiche Defer-Regel wie Hub-OTA) → **409** + `Retry-After` / JSON `{ "ok": false, "error": "streaming", "otaState": "pending" }` und URL/Image-Hinweis nicht verwerfen, wenn Pi erneut pusht |
+| Prüfungen vor Write | identisch Hub-Pfad: App-Desc Magic **`0xABCD5432`** an Offset **`0x20`**; `Content-Length` ≤ `esp_ota_get_next_update_partition()->size`; kein Merged-Image |
+| Erfolg | schreiben, `esp_ota_set_boot_partition`, Reboot; Rollback-Freigabe erst nach erfolgreichem Hub-**oder** PDAP-Heartbeat (WLAN steht) |
+| Fehlercodes (Vorschlag) | `400` ungültiges Image / zu groß; `401` Auth; `409` busy/streaming; `507` Slot voll; `500` Flash-Fehler |
+
+Schreibpfad = derselbe `ota_manager` wie bei Hub-`otaUrl` (kein zweiter OTA-Stack).
+
+### 12.2 PiDrive-Seite (Arbeitspaket **nur in `pidrive`**, hier nicht bauen)
+
+- Firmware-Depot auf dem Pi: Image + SemVer + Prüfsumme; befüllt aus dem Hub, solange Heim-WLAN da ist.
+- CLI-Linie: `pidrivectl gateway firmware fetch|list|push <version>` (passt zur unterwegs-Debug-Linie).
+- Vor `push`: Gateway-Status abfragen; bei `STREAMING` nicht pushen bzw. deferren wie ESP.
+- Ablehnen großer Dauer-Retries während der Fahrt (gleiche Backoff-Philosophie).
+
+**Status OFFENE-PUNKTE:** A21 (Empfehlung a), R24. Pi-Implementierung nachziehen — Vermerk, kein Code hier.
