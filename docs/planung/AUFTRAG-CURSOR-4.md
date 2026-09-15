@@ -231,6 +231,103 @@ eine paginierte Exportfunktion (Paket in `pidrive`). Bitte als Anforderung im
 Pflichtenheft-Kapitel zum Menükanal verankern und in den Nicht-Zielen festhalten:
 **kein vollständiger Baumtransfer über PDAP.**
 
+### 3.6 P-F6 Der Rückmeldekanal für Aktionen endet vor dem Fahrzeug `[BELEGT]`
+
+**Herkunft:** Der Eigentümer bemerkte am 2026-09-15, dass die Menüeinträge „System-Info"
+und „Version" am BMW nichts bewirken. Die Prüfung ergab eine Lücke, die weit über diese
+zwei Einträge hinausgeht.
+
+PiDrive meldet Fortschritt und Ergebnisse von Aktionen über `ipc.write_progress()`
+(`pidrive/ipc.py:131`) nach `/tmp/pidrive_progress.json` (`ipc.py:15`). Diese Datei lesen
+`cli/adapters.py`, `cli/cli.py`, `cli/service.py` und `web/shared/constants.py` — also
+**nur CLI und WebUI**. Gegenprobe: weder `mpris2.py` noch `main_core.py` enthalten das
+Wort `progress`.
+
+Betroffen sind **104 Aufrufstellen**, darunter `bt_connect.py` (19), `td_radio.py` (16),
+`td_hardware.py` (15), `update.py` (12), `audio.py` (9), `scanner.py` (8), `wifi.py` (7).
+Im Fahrzeug ist damit weder „Gerät verbunden" noch „Suchlauf 7/38" noch „RTL-SDR belegt"
+sichtbar.
+
+**Wichtige Abgrenzung zu P-F1:** ein Metadaten-Push findet sehr wohl statt.
+`check_trigger()` (`main_core.py:177-209`) meldet jedes behandelte Kommando als
+verarbeitet, `rebuild_tree()` läuft und erhöht den Revisionszähler
+(`menu_state.py:290`). Der Push trägt nur keine neue Information, weil die Nutzlast im
+Overlay steckt. Für das Gateway heißt das: der Kanal ist vorhanden und wird bedient — es
+fehlt ein **Nachrichtentyp**, nicht ein Auslöser.
+
+**Folge für das Gateway.** Über die drei AVRCP-Metadatenfelder ist ein Fortschrittsbalken
+nicht abbildbar — das ist der Grund, warum die Lücke bisher niemand geschlossen hat. Der
+PDAP-Menükanal steht damit vor einer Anforderung, die in der bisherigen Planung fehlt:
+**neben Menüknoten und Wiedergabemetadaten braucht er einen dritten Nachrichtentyp für
+transiente Meldungen** (Hinweis, Fehler, Fortschritt) mit Gültigkeitsdauer.
+
+Konkret in die PDAP-Skizze aufzunehmen:
+
+| Feld | Zweck |
+|---|---|
+| `kind` | `info` \| `warn` \| `error` \| `progress` — entspricht dem `color`-Parameter von `write_progress()` |
+| `title`, `text` | die beiden vorhandenen Textfelder |
+| `pct` | optional, nur bei `kind=progress` — PiDrive liefert es schon |
+| `ttl_ms` | Anzeigedauer; PiDrive räumt heute nach 3–4 s mit `clear_progress()` auf |
+
+Damit kann das Gateway selbst entscheiden, wie es die Meldung darstellt — als
+AVRCP-Titelzeile bei S1, als eigenes Listenelement bei S3. Diese Entscheidung ist **erst
+nach Phase −1** zu treffen; die Datenstruktur ist davon unabhängig und sollte jetzt
+festgelegt werden, weil sie den Menükanal-Vertrag betrifft.
+
+Auf der Pi-Seite ist der Befund als **D1** in
+`pidrive/docs/auftraege/AUFTRAG-DISPLAY-RUECKMELDUNG.md` erfasst, die Gestaltungsfrage als
+dortige Entscheidung **E-D1**. Bitte **keine** Änderung in `pidrive` vornehmen (siehe §4);
+der Verweis genügt.
+
+### 3.7 P-F7 Der Kommandokanal hat einen nicht angemeldeten Mitleser `[BELEGT]`
+
+**Für den PDAP-Kommandokanal die härtere Randbedingung von beiden.** Gateway-Kommandos
+landen auf der Pi-Seite in `/tmp/pidrive_cmd`. Diese Datei hat aber nicht einen Leser,
+sondern zwei konkurrierende — und der zweite ist nicht angemeldet.
+
+Drei Eingabeschleifen lesen `ipc.CMD_FILE` direkt und löschen sie anschließend, statt
+`ipc.drain_triggers()` zu benutzen:
+
+| Ort | Funktion | Dauer |
+|---|---|---|
+| `fm.py:370-375` | `freq_input_screen()` | bis 60 s |
+| `scanner.py:718-723` | `_freq_input()` | modal |
+| `scanner.py:761-767` | `freq_input_screen()` | modal |
+
+Für modale Zustände existiert der `LIST_FILE`-Mechanismus: `main_core.py:181-193` wertet
+ihn aus und gibt Navigationskommandos bewusst an die modale Schleife ab.
+`local_player.py:47` benutzt ihn korrekt. Die drei Frequenzeingaben tun es **nicht** — sie
+greifen ohne Sperre auf dieselbe Datei zu wie `main_core.py:188-190`. Wer ein Kommando
+bekommt, ist nichtdeterministisch.
+
+**Folge für das Gateway.** Solange diese Schleifen bestehen, kann ein über PDAP gesendetes
+Kommando verschwinden, ohne dass es eine Fehlermeldung gibt — und zwar mit
+Wahrscheinlichkeit, nicht deterministisch. Ein Quittungsmechanismus im Protokoll
+(„Kommando angenommen") hilft dabei nur begrenzt: der Verlust passiert **nach** dem
+Schreiben der Datei.
+
+Daraus folgen zwei Anforderungen:
+
+1. **Der PDAP-Kommandokanal braucht eine Quittung mit Bezug auf das Kommando**, nicht nur
+   auf den Transport — also eine Rückmeldung „`goto:uid` ausgeführt, neue Revision N"
+   statt eines TCP-ACK. Nur damit kann das Gateway einen Verlust überhaupt erkennen.
+2. **Der modale Zustand muss über PDAP sichtbar sein.** Ist auf der Pi eine
+   Eingabeschleife aktiv, muss das Gateway es wissen — sonst schickt es Kommandos in einen
+   Zustand, der sie anders interpretiert. Das lässt sich an den Meldungstyp aus §3.6
+   anhängen (`kind=modal` mit Restlaufzeit).
+
+Auf der Pi-Seite ist der Befund als **D3** in
+`pidrive/docs/auftraege/AUFTRAG-DISPLAY-RUECKMELDUNG.md` erfasst; die Korrektur dort (Anmeldung über
+`LIST_FILE` oder Wegfall der Menü-Frequenzeingabe) ist **Vorbedingung** für einen
+verlässlichen PDAP-Kommandokanal. Bitte in `PIDRIVE-INTEGRATION.md` als solche verlinken.
+
+Ergänzend gilt **P-F8** aus derselben Prüfung (dort **D2**): Radioaktionen stoßen nach
+Abschluss keinen zweiten Push an, weil `fm.py`, `dab_play.py`, `scanner.py`, `webradio.py`
+und `favorites.py` `S["menu_rev"]` **null** mal erhöhen — `bt_connect.py` dagegen zwölf
+mal. Für das Gateway heißt das: **nach einem Kommando nicht auf einen Push warten.** Der
+Menükanal braucht ein aktives Abfragen der Revision, keine reine Benachrichtigungslogik.
+
 ---
 
 ## 4. Was ausdrücklich nicht zu tun ist
@@ -254,10 +351,25 @@ Q1–Q5 (Anweisung 2) und Q6–Q11 (Anweisung 3) bleiben offen. Neu:
 |---|-------|---------------------|
 | **Q12** | **Wo werden die ESP32-Projekte gebaut?** Auf dem Planungs-Host ist keine Toolchain installiert. Existiert eine Maschine mit ESP-IDF oder PlatformIO, auf der die vier Builds aus `FLASH-BUDGET.md` §3 laufen können? | Ohne echte Zahlen bleibt **A17** blockiert, und A17 blockiert jede Firmware. Das ist derzeit der längste Pfad im Projekt. |
 | **Q13** | Soll der Gateway-Menükanal von Anfang an paginiert spezifiziert werden (§3.5), oder erst nach dem Phase-−1-Ergebnis? | Bei Browsing-Erfolg (S3) diktiert AVRCP das Seitenmodell; bei S1 wäre eine einfachere Form vertretbar. |
+| **Q14** | Welche Meldungen sollen es über PDAP bis zum Fahrer schaffen (§3.6)? | Empfehlung: **Fehler und Warnungen ja, Fortschritt nein.** „Gerät nicht verbunden" und „RTL-SDR belegt" lassen den Fahrer heute ratlos; „Suchlauf 7/38" ist über drei Textfelder ohnehin nur als Zahl darstellbar und eher Ablenkung. Die Datenstruktur deckt beides ab, die Auswahl trifft PiDrive. |
 
 Zu Q12: Der Fahrzeug-Pi (`192.168.178.105`) ist als Build-Host **nicht** empfohlen — er ist
 ARM64 und ESP-IDF läuft dort grundsätzlich, aber eine mehrere Gigabyte große Toolchain auf
 dem produktiven Autorechner zu installieren schafft ein Problem, um ein anderes zu lösen.
+
+**Q12 beantwortet (2026-09-15):** Die zweite Cursor-Instanz verfügt über eine Toolchain
+(ESP-IDF oder PlatformIO). Damit sind die vier Vergleichsbauten aus
+[FLASH-BUDGET.md](FLASH-BUDGET.md) §3 durchführbar — die Flash-Messung ist nicht mehr
+blockiert.
+
+**A17** hängt damit nur noch an zwei Dingen: der Flash-Messung und dem Ergebnis von
+Phase −1. Für Phase −1 liegt das Werkzeug inzwischen im PiDrive-Repo
+(`tools/bmw_avrcp_probe.sh` + `tools/bmw_avrcp_analyze.py`, Paket G1). Der
+Interpretationsschlüssel ist im Auswerteskript **vorab** festgeschrieben, damit das Urteil
+nicht davon abhängt, was man sich beim Lesen der Rohdaten wünscht.
+
+Daraus folgt die Reihenfolge: Flash-Messung und Fahrzeugmessung laufen **parallel**, beide
+münden in A17. Vorher entsteht keine Firmware.
 
 ---
 
