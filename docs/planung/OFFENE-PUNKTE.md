@@ -1,46 +1,51 @@
 # Offene Punkte & Planungsentscheidungen
 
-Stand: 2026-09-14 (Review V1.1). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
+Stand: 2026-09-15 (Planung V1.2 — BT-Steuerung / Stack). Ziel: vor Firmware-Start klären, was die Architektur wirklich festnagelt.
 
-Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md).
+Nachzüge: [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md).  
+Auftrag: [AUFTRAG-CURSOR-2.md](AUFTRAG-CURSOR-2.md). Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
 
 ---
 
 ## Empfohlene Reihenfolge (kurz)
 
 ```
-1. Stack festlegen (ESP-IDF Bluedroid) + Hub-Client-Pfad     ← A1/A9
-2. Phase 0 Skeleton: BT Classic + Logs + Hub register stub
-3. Coexistence-Gate (WiFi + A2DP ≥ 30 min, inkl. Hub-Heartbeat)
-4. AVRCP-Analyzer am realen BMW
-5. PDAP-Header + Control-Kanal spezifizieren
+0. Phase −1 am Pi (Browsing/Metadata-Probe)                  ← blockiert A17/A18
+1. A1 (ESP-IDF) bestätigt halten; A17 Host-Stack entscheiden + A9 Hub
+2. Erst dann Komponentenstruktur / Phase-0-Skeleton
+3. Coexistence-Gate (WiFi + A2DP ≥ 30 min, inkl. Hub-Heartbeat; Stack-spezifisch)
+4. AVRCP-Analyzer am realen BMW (Phase 0)
+5. PDAP-Header + Control-Kanal (+ optional Menü-Kanal bei S3)
 6. PCM über UDP + Jitter-Buffer (+ Laptop-Tester)
-7. Metadata observe → implement
+7. Metadata observe → implement (stackabhängig, F1)
 8. PiDrive: PW-Sink + gateway_client + audio_output=gateway
 9. DAB→PipeWire (eigenes PiDrive-Paket, falls Gateway-DAB nötig)
 10. Hub-OTA hardened (deferred while STREAMING) + Bin in Hub-Ablage
 ```
 
-Phase 0 und Coexistence **vor** PDAP-Vollausbau. PiDrive-Code erst nach stabilem Laptop→ESP→BMW-PCM.
+Phase −1 **vor** A17. Phase 0 und Coexistence **vor** PDAP-Vollausbau. Keine Firmware-Ordner, solange A17 offen ist. PiDrive-Code erst nach stabilem Laptop→ESP→BMW-PCM.
 
 **PiDrive-Ist-Analyse:** [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) (`pidrive` v0.11.127).  
 **Hub-Integration:** [HUB-INTEGRATION.md](HUB-INTEGRATION.md).  
-**Betriebsmodi / Handy / WiFi:** [BETRIEBSMODI.md](BETRIEBSMODI.md).
+**Betriebsmodi / Handy / WiFi:** [BETRIEBSMODI.md](BETRIEBSMODI.md).  
+**AVRCP / Menü:** [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md).
 
 ---
 
 ## A. Entscheidungen (bitte festlegen)
 
-### A1. Firmware-Stack: ESP-IDF vs. PlatformIO/Arduino
+### A1. Firmware-Build: ESP-IDF vs. PlatformIO/Arduino
 
 | Option | Pro | Contra |
 |--------|-----|--------|
-| **ESP-IDF + Bluedroid** (Pflichtenheft) | Offizieller A2DP-Source-Pfad, volle BT-Classic-Kontrolle, Analyzer machbar | Weicht von `esp32.ergo` / Hub-Projekten ab; steilere Lernkurve; Hub-Client selbst bauen |
+| **ESP-IDF** (Build + FreeRTOS) | Offizieller Classic-BT-Pfad, Analyzer machbar, Hub-Client selbst baubar | Weicht von `esp32.ergo` / Hub-Projekten ab; steilere Lernkurve |
 | PlatformIO + Arduino-BT-Libs | Vertrautes Setup, fertiger `HubClient` | A2DP **Source** + AVRCP Target + WiFi-Coexistence auf Classic-ESP ist dort dünn / fragil |
 
-**Empfehlung:** ESP-IDF (wie im Pflichtenheft) **plus** dünner IDF-Hub-Client (USB-Flash + OTA über `iobroker.esp-hub`, kein Hub-Compile). Siehe [HUB-INTEGRATION.md](HUB-INTEGRATION.md). Die anderen `esp32.*`-Projekte bleiben Arduino/PlatformIO; dieses Repo ist bewusst „anders“, bleibt aber hub-programmierbar.
+**Empfehlung:** ESP-IDF **plus** dünner IDF-Hub-Client (USB-Flash + OTA über `iobroker.esp-hub`, kein Hub-Compile). Siehe [HUB-INTEGRATION.md](HUB-INTEGRATION.md).
 
-**Status:** □ offen / □ bestätigt
+**V1.2-Korrektur:** Die frühere Empfehlung „ESP-IDF + **Bluedroid**“ ist mit F1/F2 (keine Target-Metadaten-API, kein Browsing) **nicht mehr haltbar**, solange Display/Menü Ziel sind. A1 bleibt die **Build-/RTOS-Entscheidung**. Der **Bluetooth-Host-Stack** ist herausgelöst → **A17**.
+
+**Status:** □ offen / □ bestätigt (Tendenz: ESP-IDF)
 
 ### A2. Coexistence-Plan B (falls Gate fällt)
 
@@ -195,7 +200,43 @@ Wenn kein PiDrive, aber Handy/Laptop PDAP-Session: Events an Session-Owner. Wenn
 
 ### A16. Hardware-Variante bei RAM-Engpass
 
-WROOM zuerst; bei Heap/Underruns WROVER/PSRAM (kein S3).
+WROOM zuerst; bei Heap/Underruns WROVER/PSRAM (kein S3). Bei S3 + Menübaum + BTstack + WiFi wird der Heap enger als in REVIEW L4 angenommen → Q5 / A16 früh mitdenken.
+
+**Status:** □ offen / □ bestätigt
+
+### A17. Bluetooth-Host-Stack (herausgelöst aus A1)
+
+Entscheidungsvorlage — **erst nach Phase −1** festlegen. Siehe [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md) §4 und [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
+
+| Option | Metadaten | Browsing | Aufwand | Risiko |
+|--------|-----------|----------|---------|--------|
+| Bluedroid unverändert | ⛔ | ⛔ | gering | Display bleibt leer → Projektziel verfehlt (F1/F2) |
+| Bluedroid + Patch in `bta_av_act.c` | ⚠ per Patch | ⛔ | mittel | Fork-Pflege bei jedem IDF-Update; S3 dauerhaft verbaut |
+| **BTstack auf ESP32** | ✅ API | ✅ API | höher (neuer Stack, eigener Coexistence-Nachweis) | Controller-Eigenheiten ESP32-Port; Lizenz nicht-kommerziell (R21/R22) |
+
+**Empfehlung:** **BTstack**, sobald Phase −1 zeigt, dass Metadaten im Fahrzeug ankommen — und **zwingend**, falls Browsing möglich ist. Lizenzfrage Q2 vorher klären.
+
+**Status:** □ offen (blockiert durch Phase −1) / □ bestätigt
+
+### A18. Menü-Transport und Semantik (bei S3)
+
+Wenn S3 kommt: Abbildung Ordner / Sender / Aktionen / Schalter auf Folder-Items und Media-Elements; Aktionen, nach denen das Auto Wiedergabe erwartet (`PlayItem`); Baum vollständig vs. seitenweise (`GetFolderItems` ist paginiert); `uid_counter`-Invalidierung ohne Permanent-Reload bei jedem BT-Statuswechsel.
+
+**Vorschlag:** Baum vollständig mit Größenbudget (Skizze Auftrag §4.6 / Pflichtenheft §2.24); darüber Lazy-Loading. `uid_counter` nur bei Änderung der UID-Menge — gespiegelt aus PiDrive-Auftrag M1.
+
+**Status:** □ offen (nach Phase −1 / S3-Entscheidung) / □ bestätigt
+
+### A19. Multi-Source über den Pi (nicht ESP-Relay)
+
+Formal: Handy/Tablet koppeln am **Pi als A2DP-Sink** (F4 — Sink+Source gleichzeitig auf ESP unmöglich). PipeWire führt in denselben Capture-Punkt wie DAB/Webradio; Umschaltung über bestehendes PiDrive-Menü. Folge: PiDrive wird AVRCP **Controller** gegenüber dem Handy und muss Skip vom BMW durchreichen → neuer Fall in `map_event()` / Event-Contract ([PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md) §2.9/§8; Arbeitspaket in `pidrive` G3).
+
+**Status:** □ offen / □ bestätigt (Richtung mit Eigentümer abgestimmt laut Auftrag)
+
+### A20. AVRCP-Anzeigename und Player-Identität
+
+Bei S3 erscheint der Gateway in der Player-Liste des Autos. Zusammen mit A15 (BT-Anzeigename): Wie heißt das Gerät im iDrive? Während Parallelbetrieb BlueZ+ESP — zwei Player sichtbar?
+
+**Empfehlung:** mit A15 bündeln; Default-Name während Migration `PiDrive-GW`.
 
 **Status:** □ offen / □ bestätigt
 
@@ -222,19 +263,26 @@ WROOM zuerst; bei Heap/Underruns WROVER/PSRAM (kein S3).
 | R15 | A2DP 48 kHz vs. PCM 44,1 → Pitch/Reject | Force 44,1 oder ESP-Resample |
 | R16 | RAM/CPU WROOM zu eng (BT+WiFi+SBC+Buffer) | KPIs; Plan B WROVER |
 | R17 | Altes Pi-Bonding am BMW + Dual-Connect | Migrations-Checkliste §2.22 |
+| R18 | Bluedroid-TG liefert keine Metadaten → BMW-Display leer | F1 verifiziert; Entscheidung A17 |
+| R19 | NBT Evo öffnet keinen Browsing-Kanal → S3 entfällt | Phase −1 |
+| R20 | Sink+Source auf einem ESP32 unmöglich → Multi-Source nur über Pi | F4 verifiziert; A19 |
+| R21 | BTstack-ESP32-Port: Controller-Eigenheiten, Coexistence unbekannt | Gate §2.4 mit BTstack wiederholen |
+| R22 | BTstack-Lizenz (nicht-kommerziell) kollidiert mit späterer Weitergabe | vor A17 klären; LICENSE/README |
+| R23 | Menübaum sprengt WROOM-RAM (große lokale Listen) | Größenbudget A18; Lazy-Loading |
 
 ---
 
 ## C. Was bewusst noch *nicht* spezifiziert wird
 
-Bis Phase-0-Messung liegen:
+Bis Phase −1 / Phase-0-Messung / A17:
 
 - Konkrete AVRCP→Trigger-Mapping-Tabelle
 - Finale Bitpool- / Buffer-Defaults (nur Startwerte)
 - Exakte FreeRTOS-Prioritäten und Core-Pinning
-- Byte-genaue PDAP-Structs (nur Header-Skizze vorhanden)
+- Byte-genaue PDAP-Structs (nur Header-Skizze; Menü-Kanal erst recht nur Skizze)
+- Komponentenliste unter `components/` (hängt an A17)
 
-Diese Dateien kommen als Nächstes nach Freigabe:
+Diese Dateien kommen als Nächstes nach Freigabe / A17:
 
 - `docs/planung/ZUSTANDSAUTOMAT.md`
 - `docs/planung/PDAP.md`
@@ -251,8 +299,7 @@ esp32.bt-gateway/
 ├── components/
 │   ├── hub_client/        ← POST /api/register + otaUrl (Familie-Contract)
 │   ├── pdap/
-│   ├── a2dp_source/
-│   ├── avrcp_target/
+│   ├── …                  ← A2DP/AVRCP: Bluedroid-Module ODER BTstack-Profile + menu_target
 │   ├── jitter_buffer/
 │   ├── analyzer/
 │   └── webui/
@@ -261,18 +308,19 @@ esp32.bt-gateway/
 └── tools/
 ```
 
-Noch nicht anlegen, bis Stack (A1) bestätigt ist — `hub_client` aber mit Phase‑0-Skeleton mitplanen.
+**Noch nicht anlegen**, bis A17 entschieden ist. `hub_client` mit Phase‑0-Skeleton mitplanen, sobald Stack steht. Bei BTstack heißen die BT-Komponenten anders als `a2dp_source`/`avrcp_target`-Eigenbau.
 
 ---
 
 ## E. Freigabe-Checkliste Pflichtenheft
 
 - [ ] Konzept inhaltlich OK
-- [ ] Nicht-Ziele OK
-- [ ] Phase 0 + Coexistence als erste Arbeitspakete OK
-- [ ] A1–A16 entschieden oder bewusst vertagt
+- [ ] Nicht-Ziele OK (inkl. Multi-Source über Pi, F4)
+- [ ] Phase −1 + Phase 0 + Coexistence als erste Arbeitspakete OK
+- [ ] A1, A17–A20 und A2–A16 entschieden oder bewusst vertagt
 - [ ] PiDrive-Integrationsplan OK ([PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md))
 - [ ] Hub-Programmierung OK ([HUB-INTEGRATION.md](HUB-INTEGRATION.md))
 - [ ] Betriebsmodi / Handy / WiFi OK ([BETRIEBSMODI.md](BETRIEBSMODI.md))
-- [ ] Review-Nachzüge OK ([REVIEW-V1.1.md](REVIEW-V1.1.md))
-- [ ] Danach: Zustandsautomat + PDAP-Header + Phase-0-Skeleton
+- [ ] AVRCP-Möglichkeiten OK ([AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md))
+- [ ] Review-Nachzüge OK ([REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md))
+- [ ] Danach: Zustandsautomat + PDAP-Header + Phase-0-Skeleton (nach A17)
