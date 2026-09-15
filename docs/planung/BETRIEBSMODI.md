@@ -1,6 +1,6 @@
 # Betriebsmodi, PiDrive-Stabilität & Mehr-Clients
 
-**Stand:** 2026-09-14  
+**Stand:** 2026-09-15 (V1.2)  
 **Kontext:** Eigentümer von `pidrive` **und** `esp32.bt-gateway` — beide Repos dürfen bewusst zusammenwachsen.  
 **Fragen:** (1) Wie macht der ESP PiDrive stabiler? (2) Musik vom Handy o. Ä. an den Gateway? (3) Gleichzeitig WiFi-Client + SoftAP?
 
@@ -61,9 +61,10 @@ Der ESP ist absichtlich **kein Mixer** und in V1 **kein** A2DP-Sink+Source-Relay
 | **B. PDAP-Direktclient** | Handy/Laptop-App → PDAP (PCM+Meta) → ESP → BMW | **ja (Referenz: Laptop)** | Gleicher Contract wie PiDrive; Phone-App später |
 | **C. SoftAP + PDAP** | Handy joined ESP-AP → PDAP | **V1.1** | Unterwegs ohne Heim-WLAN |
 | **D. Browser/Web-Sender** | Handy öffnet ESP-WebUI, sendet Audio (WebAudio/MediaCapture) | später / Experiment | Bequem, aber Format/Latenz/Browser-Limits |
-| **E. A2DP-Relay** | Handy —BT→ ESP (Sink) —BT→ BMW (Source) | **nicht V1** | Zwei Classic-Rollen + WiFi; genau das Nicht-Ziel; ggf. nie auf einem Chip |
+| **E. A2DP-Relay** | Handy —BT→ ESP (Sink) —BT→ BMW (Source) | **nicht im ESP, dauerhaft** | F4: Sink+Source gleichzeitig auf ESP32 ausgeschlossen; kein V1-Aufschub, sondern Architekturgrenze |
+| **F. Pi als A2DP-Sink** | Handy/Tablet —BT→ **Pi** (Sink) → PW Capture → PDAP → ESP → BMW | **Hauptweg für Fremdgeräte** | CSR-Dongle wird frei, sobald BMW am ESP hängt; Umschaltung über PiDrive-Menü; Pi = AVRCP-Controller zum Handy (A19) |
 
-**Empfehlung:** Stabilität und UX zuerst über **A**. Parallel **B** (Laptop-Tester schon geplant) so bauen, dass eine spätere Phone-App derselbe Client ist. **E** nicht einplanen, bis Coexistence + Source allein bombenfest sind.
+**Empfehlung:** Stabilität und UX zuerst über **A**. Fremdgeräte-BT über **F**. Parallel **B** (Laptop-Tester) so bauen, dass eine spätere Phone-App derselbe Client ist. **E** nicht einplanen.
 
 ### 2.2 Wer „Quelle“ ist — eine Session-Regel
 
@@ -82,7 +83,8 @@ Wenn PiDrive + Handy beide „steuern“ wollen: **PiDrive bleibt Dispatcher** (
 
 1. **Spotify/Apple Music auf dem Pi** (Connect / ähnlich) → Gateway — null Extra-Firmware.  
 2. **Kleine Android/iOS-App oder Python auf dem Phone** als PDAP-Client (wie `pdap_tester`) — wenn du später „Pi aus, nur Handy→BMW“ willst.  
-3. **Nicht:** Handy mit BMW-BT koppeln und ESP dazwischenschalten in V1.
+3. **Nicht:** Handy mit BMW-BT koppeln und ESP dazwischenschalten (Weg E).  
+4. **Fremdgerät per Classic-BT:** an den **Pi** koppeln (Weg F), nicht an den ESP.
 
 ---
 
@@ -162,8 +164,9 @@ Programmierung: iobroker.esp-hub (USB/OTA), unabhängig vom Auto-Modus (wenn STA
 
 **V1 Fokus:** PiDrive→ESP→BMW stabil + Hub + SoftAP zumindest für Setup.  
 **V1.1:** SoftAP-PDAP für Handy/Laptop unterwegs.  
+**Geplant (Pi-Seite):** Weg F — Handy/Tablet als A2DP-Sink am Pi ([OFFENE-PUNKTE.md](OFFENE-PUNKTE.md) A19).  
 **Später:** native Phone-App als PDAP-Client.  
-**Nicht V1:** BT-Relay Handy→ESP→BMW.
+**Dauerhaft nicht im ESP:** BT-Relay Handy→ESP→BMW (Weg E / F4).
 
 ---
 
@@ -172,6 +175,7 @@ Programmierung: iobroker.esp-hub (USB/OTA), unabhängig vom Auto-Modus (wenn STA
 - **A10** WiFi-Default-Policy: `sta` / `ap` / `auto` (Empfehlung: `auto` = STA wenn bekannt, sonst AP; APSTA opt-in)  
 - **A11** Zweiter PDAP-Client (Handy): V1 busy-reject vs. Priority PiDrive  
 - **A12** Session-Owner für AVRCP: immer PiDrive wenn online, sonst Gast-Client  
+- **A19** Multi-Source über Pi-Sink (Weg F) — Event-Contract / `map_event`
 
 ---
 
@@ -179,5 +183,6 @@ Programmierung: iobroker.esp-hub (USB/OTA), unabhängig vom Auto-Modus (wenn STA
 
 - PiDrive-Code-Anker: [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md)  
 - Hub: [HUB-INTEGRATION.md](HUB-INTEGRATION.md)  
-- Nicht-Ziel Relay: Pflichtenheft §2.2  
-- Coexistence: Pflichtenheft §2.4 + Gate inkl. SoftAP
+- Nicht-Ziel Relay / Weg F: Pflichtenheft §2.2  
+- Coexistence: Pflichtenheft §2.4 + Gate inkl. SoftAP  
+- AVRCP/Menü: [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md)

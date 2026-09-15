@@ -1,8 +1,9 @@
 # Konzept — PiDrive Bluetooth Gateway (ESP32.BT-Gateway)
 
-**Dokumentstatus:** Entwurf V1.1 (Planungs-Review)  
+**Dokumentstatus:** Entwurf V1.2 (BT-Steuerung analysiert, Stack offen)  
 **Repo:** `esp32.bt-gateway`  
-**Review:** [REVIEW-V1.1.md](REVIEW-V1.1.md)
+**Review:** [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md)  
+**AVRCP/Menü:** [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md)
 
 ---
 
@@ -41,11 +42,11 @@ Wir ziehen die gesamte Bluetooth-Classic-Verantwortung aus dem Raspberry Pi hera
 
 Der ESP32 wird zur **Fahrzeug-Bluetooth-Hardware**:
 
-- Er spricht ausschließlich die Sprache des BMW (A2DP Source + AVRCP Target).
-- Der Raspberry Pi liefert nur noch PCM-Audio und Metadaten/Steuerbefehle über WLAN.
-- Der Pi kennt im Gateway-Pfad kein BlueZ, kein A2DP und kein AVRCP mehr.
+- Er spricht ausschließlich die Sprache des BMW (A2DP Source + AVRCP Target, ggf. Browsing).
+- Der Raspberry Pi liefert nur noch PCM-Audio und Metadaten/Steuerbefehle/Menübaum über WLAN.
+- Der Pi kennt im Gateway-Pfad kein BlueZ mehr **zum BMW** (BlueZ kann weiter für Handy-Sink am Pi dienen — Weg F).
 
-**Ergebnis:** Klare Trennung der Verantwortlichkeiten.
+**Ergebnis:** Klare Trennung der Verantwortlichkeiten — und die **einzige realistische Chance auf ein echtes Bedienmenü im Fahrzeug** (AVRCP Browsing, Stufe S3), die BlueZ target-seitig nicht liefert. Stabilisierung der BT-Strecke bleibt nötig; das Menü ist das stärkste Produktargument.
 
 ```
 PiDrive (Infotainment-Logik)
@@ -68,6 +69,7 @@ BMW iDrive (A2DP Sink + AVRCP Controller)
 | **Wartbarkeit** | PiDrive-Änderung ist schmal: neuer Output `gateway` + `integration/gateway_client`; Trigger-/Menü-Logik bleibt. Der ESP ist ein eigenständiges Projekt. |
 | **Beobachtbarkeit** | Der ESP kann gleichzeitig als BMW-Bluetooth-Analyzer dienen („observe first“). |
 | **Zukunftssicherheit** | Andere Clients (PC, anderer ESP, zukünftige Quellen) können denselben Gateway nutzen. |
+| **Echtes iDrive-Menü (S3)** | Eigener AVRCP-Target-Stack kann Browsing füllen, wo BlueZ aufgibt — messbar in Phase −1. |
 | **Entwicklungsrisiko** | BlueZ bleibt zunächst parallel erhalten → kein Big-Bang. |
 
 ## 1.4 Was der ESP bewusst **nicht** ist
@@ -75,7 +77,7 @@ BMW iDrive (A2DP Sink + AVRCP Controller)
 - Kein zweites Infotainment-System
 - Kein Audio-Mixer
 - Kein Quellen-Umschalter
-- Kein Handy-Relay (A2DP Sink + Source gleichzeitig)
+- Kein Handy-Relay (A2DP Sink + Source gleichzeitig **im ESP**; Multi-Source über Pi-Sink)
 - Kein generischer Multi-Device-Bluetooth-Adapter
 - Kein Ersatz für die bestehende AUX-/HDMI-Route
 
@@ -83,30 +85,33 @@ Er übersetzt **ausschließlich** Client-Audio und -Steuerung in die Bluetooth-S
 
 ## 1.5 Zentrale Designregeln
 
-1. Der ESP weiß nichts über DAB, Spotify, Sender, Menüs oder PiDrive-Geschäftslogik.
-2. Der Pi weiß nichts über A2DP, SBC, AVRCP oder BlueZ (im Gateway-Pfad).
+1. Der ESP kennt keine PiDrive-Geschäftslogik; er transportiert ggf. eine **generische Baumstruktur**, deren Bedeutung ausschließlich der Client kennt (keine DAB-/Spotify-/Sender-Semantik auf dem ESP).
+2. Der Pi weiß nichts über A2DP, SBC, AVRCP oder BlueZ **zum BMW** (im Gateway-Pfad). BlueZ am Pi für Handy-Sink (Weg F) bleibt möglich.
 3. Alles, was der BMW sendet, wird zuerst nur beobachtet und geloggt.
-4. WiFi + Classic-BT-Coexistence ist ein hartes Gate-Kriterium.
-5. BlueZ bleibt als Fallback, bis der Gateway-Pfad im Auto verifiziert ist.
+4. WiFi + Classic-BT-Coexistence ist ein hartes Gate-Kriterium (stackspezifisch nach A17).
+5. BlueZ bleibt als Fallback zum BMW, bis der Gateway-Pfad im Auto verifiziert ist.
 6. Buffer und SBC-Parameter sind parametrisierbar und werden empirisch bestimmt.
 7. „BMW disconnected“ ist ein normaler Zustand, kein Fehler.
 8. Der ESP ist Teil der **ESP-Hub-Familie**: sichtbar in `iobroker.esp-hub`, USB-flashbar und OTA-fähig — ohne den Arduino-Stack der anderen Nodes zu erzwingen (dünner IDF-Hub-Client).
 9. WiFi-Modi bewusst wählen (STA / SoftAP / selten APSTA); Classic-BT + Dauer-APSTA nicht voraussetzen.
-10. Fremdgeräte (Handy) speisen Audio über **PiDrive oder PDAP**, nicht über BT-Relay am ESP.
+10. Fremdgeräte speisen Audio über **PiDrive (inkl. Pi-A2DP-Sink) oder PDAP**, nicht über BT-Relay am ESP.
 
 Stabilität / Clients / WiFi: [BETRIEBSMODI.md](BETRIEBSMODI.md).
 
 ## 1.6 Entwicklungsphilosophie
 
-- **Phase 0 zuerst:** BMW-Profil-Discovery und Analyzer mit dem ESP, bevor die volle Audio-Pipeline gebaut wird.
+- **Phase −1 zuerst (Pi):** Browsing/Metadata am realen BMW mit BlueZ messen — bevor Stack und Firmware festliegen.
+- **Phase 0 (ESP):** Analyzer und Observe-first, bevor die volle Audio-Pipeline gebaut wird.
 - **Observe first:** AVRCP und Metadata werden zunächst nur protokolliert.
 - **Parallelbetrieb:** `audio_output = bt | gateway` (bestehendes Setting erweitern; BlueZ-Pfad bleibt Fallback).
 - **Pi-seitige Event-Namen wiederverwenden:** PDAP liefert `next`/`previous`/…; `map_event()` entscheidet Trigger.
 - **PCM-Contract auf dem Pi erzwingen:** Capture-Node resample’t auf festes Format (44.1 / S16LE / Stereo), nicht „was die Quelle gerade liefert“.
 - **Empirie vor Festschreibung:** Buffer-Größen, Bitpool, Timing werden gemessen, nicht spekuliert.
 - **Kleine, testbare Schritte** mit klaren Exit-Kriterien.
+- **Keine Komponentenstruktur vor A17.**
 
-Detaillierte Ist-Analyse und Änderungsliste: [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md).
+Detaillierte Ist-Analyse und Änderungsliste: [PIDRIVE-INTEGRATION.md](PIDRIVE-INTEGRATION.md).  
+Messplan: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
 
 ## 1.7 Namensgebung
 
