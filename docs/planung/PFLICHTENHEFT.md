@@ -1,8 +1,9 @@
 # Pflichtenheft V1.0 — PiDrive Bluetooth Gateway (ESP32)
 
-**Dokumentstatus:** Entwurf V1.1 (Planungs-Review)  
+**Dokumentstatus:** Entwurf V1.2 (BT-Steuerung / Stack offen)  
 **Ziel:** Vollständige, implementierbare Spezifikation für ein eigenständiges ESP-IDF-Projekt + minimale PiDrive-Erweiterung.  
-**Review-Nachzüge:** [REVIEW-V1.1.md](REVIEW-V1.1.md)
+**Review-Nachzüge:** [REVIEW-V1.1.md](REVIEW-V1.1.md), [REVIEW-V1.2.md](REVIEW-V1.2.md)  
+**Messplan:** [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md) · **AVRCP:** [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md)
 
 ---
 
@@ -13,7 +14,7 @@
 | Komponente | Verantwortung | Kennt nicht |
 |------------|---------------|-------------|
 | **PiDrive** | Quellen, Audio-Engine, Trigger-Dispatcher, Metadaten-Erzeugung, Gateway-Client, Routing-Logik | A2DP, SBC, AVRCP, BlueZ (Gateway-Pfad) |
-| **ESP32 Gateway** | WiFi, PDAP, Jitter-Buffer, SBC-Encoder, A2DP Source, AVRCP Target, Connection-Management, Analyzer, WebUI/Diagnose, **ESP-Hub Heartbeat/OTA** | DAB, Spotify, Menüs, Senderlisten, PiDrive-Logik |
+| **ESP32 Gateway** | WiFi, PDAP, Jitter-Buffer, SBC-Encoder, A2DP Source, AVRCP Target (+ optional Browsing), Connection-Management, Analyzer, WebUI/Diagnose, **ESP-Hub Heartbeat/OTA** | DAB, Spotify, PiDrive-Menüsemantik (nur generische Items bei S3) |
 | **iobroker.esp-hub** | Geräteinventar, USB-Flash, Firmware-Ablage, OTA-Push | Audio, BT, PDAP, BMW |
 | **BMW** | A2DP Sink + AVRCP Controller | Herkunft des Audios |
 
@@ -52,38 +53,32 @@ ESP Status (WiFi, BT, Buffer, KPIs) → PDAP → PiDrive
 
 ## 2.2 Explizite Nicht-Ziele (V1)
 
-- A2DP Sink + Source gleichzeitig (kein Handy-**BT**-Relay)
-- Mehrere gleichzeitige A2DP-Sinks
+- **A2DP-Relay nicht im ESP:** Sink + Source gleichzeitig auf dem Gateway entfällt dauerhaft (Espressif: „A2DP source cannot be used together with A2DP sink at the same time“ — F4). Multi-Source (Handy, Tablet) läuft über den **Pi als A2DP-Sink** → PipeWire → PDAP → ESP → BMW (Weg F, [BETRIEBSMODI.md](BETRIEBSMODI.md); Entscheidung A19). Der ESP bleibt Ein-Rollen-Gerät (Source + Target).
+- Mehrere gleichzeitige A2DP-Sinks am ESP
 - Mehrere gleichzeitige PDAP-Audio-Sessions (ein Session-Owner)
 - AAC, aptX, LDAC
 - HFP / Telefonie
 - Audio-Mixing oder Quellen-Umschaltung im ESP
-- BMW-spezifische Geschäftslogik im ESP
+- BMW-spezifische Geschäftslogik im ESP (Semantik der Menübaum-Knoten bleibt beim Client — §2.24)
 - ESP32-S3 oder andere BLE-only-Chips
 - Vollständige BlueZ-Emulation
 - Automatisches Resampling oder Clock-Drift-Korrektur (nur Überwachung)
 - Dauerhaftes APSTA+A2DP ohne bestandenes Gate (siehe Betriebsmodi)
 
-**Erlaubt / geplant (nicht Nicht-Ziel):** Handy-Musik **über PiDrive** (Spotify Connect etc.) oder später als **PDAP-Client** (WLAN/SoftAP). Details: [BETRIEBSMODI.md](BETRIEBSMODI.md).
+**Erlaubt / geplant (nicht Nicht-Ziel):** Handy-Musik **über PiDrive** (Spotify Connect, Pi-A2DP-Sink, …) oder später als **PDAP-Client** (WLAN/SoftAP). Details: [BETRIEBSMODI.md](BETRIEBSMODI.md).
 
 ---
 
-## 2.3 Phase 0 – BMW Bluetooth Profil-Discovery & Analyzer (höchste Priorität)
+## 2.3 Phase −1 / Phase 0 – Vermessung vor Implementierung
 
-**Ziel:** Das konkrete Verhalten des NBT Evo vermessen, bevor die Audio-Pipeline fertiggestellt wird.
+Vollständig: [PHASE-0-MESSPLAN.md](PHASE-0-MESSPLAN.md).
 
-**Anforderungen an den ESP:**
+**Phase −1 (Pi, vor ESP-Firmware):** Mit BlueZ/`btmon` am realen BMW klären: Browsing-Kanal? Metadata-Zeilen? Pass-Through-Subset? Blockiert A17 (Host-Stack) und A18 (Menü). Durchführung in `pidrive` (G1/G2).
 
-- Discovery, Pairing und Connect zum BMW
-- Vollständiges Logging aller eingehenden AVRCP-PDUs (Pass-Through, Register Notification, Get Element Attributes, Volume, etc.)
-- Logging von Timing (Pressed/Released), Reihenfolge und Parametern
-- A2DP-Verbindungsaufbau und Codec-Negotiation loggen
-- RSSI, Disconnect-Reasons, Connection-Interval
-- WebUI + exportierbare Logs (JSON/CSV)
-- Self-Test-Modus (Testton vom ESP direkt zum BMW)
+**Phase 0 (ESP-Analyzer):** Discovery/Pairing/Connect; vollständiges Logging eingehender AVRCP-PDUs, Timing, Codec-Negotiation, Disconnect-Reasons; WebUI + exportierbare Logs; Self-Test-Testton.
 
-**Exit-Kriterium Phase 0:**  
-Vollständige Protokollierung des realen BMW-Verhaltens über mehrere Zündungszyklen und Fahrsituationen. Daraus abgeleitete Mapping-Tabelle für AVRCP und Metadata.
+**Exit Phase −1:** Entscheidungswirkung dokumentiert (S3 ja/nein → Stack-Empfehlung).  
+**Exit Phase 0:** Mapping-Tabelle aus realem Verhalten über Zündzyklen — nicht spekulativ vorab.
 
 ---
 
@@ -190,33 +185,44 @@ SAMPLE_RATE | CHANNELS | FORMAT | FLAGS | PAYLOAD_LEN | CRC16
 
 **Heartbeat:** alle 1–2 s in beide Richtungen. Nach 3 fehlenden Heartbeats → Gateway offline.
 
-**HELLO / Capabilities (V1):** neben AUTH/VERSION meldet der ESP u. a. `fw_version`, `bt_name`, `capabilities` (z. B. `audio_pcm_44100_s16le`, `metadata_v1`, `events_v1`), `max_buffer_ms`. Client bricht bei Inkompatibilität klar ab.
+**HELLO / Capabilities (V1):** neben AUTH/VERSION meldet der ESP u. a. `fw_version`, `bt_name`, `capabilities` (z. B. `audio_pcm_44100_s16le`, `metadata_v1`, `events_v1`, optional `menu_v1`), `max_buffer_ms`. Client bricht bei Inkompatibilität klar ab.
 
 **Security (V1 minimal):** Pre-Shared-Key / Token im HELLO/AUTH.
 
 **Discovery (Pi findet ESP):** Config `gateway_host` auf dem Pi (Pflicht-Minimum); empfohlen mDNS `bt-gateway.local` im STA-LAN; SoftAP-SSID-Muster für Setup/Auto. Details: [REVIEW-V1.1.md](REVIEW-V1.1.md) L1.
 
+**Optionaler Menü-Kanal (bei Ausbaustufe S3):** Control-Nachrichten zur generischen Item-Liste (Skizze §2.24 / Auftrag §4.6) — `MENU_TREE`, `MENU_INVALIDATE`, `MENU_ACTIVATE`, optional `MENU_PAGE_*`. Byte-genaue Structs bewusst offen.
+
 ---
 
 ## 2.9 AVRCP
 
-- ESP = **AVRCP Target**
-- BMW = **AVRCP Controller**
+- ESP = **AVRCP Target** (+ bei S3 Browsing-Target)
+- BMW = **AVRCP Controller** (+ ggf. Browsing-Controller)
 - V1: Vollständiger Analyzer (alles loggen)
 - Später: Mapping der beobachteten Commands auf PDAP-Events mit **PiDrive-Event-Namen**:
   `next`, `previous`, `play`, `pause`, `play_pause`, `stop`, `volumeup`, `volumedown`, `fast_forward`, `rewind`
 - Keine Geschäftslogik im ESP – der Pi mappt via bestehendem `map_event()` (Menü vs. FM vs. DAB)
-- Double-Tap-Semantik (1,2 s → `cat:0`) bleibt auf dem Pi
+- Double-Tap-Semantik (1,2 s → `cat:0`) bleibt auf dem Pi (S1); bei S3 weitgehend überflüssig
 - Absolute Volume: nicht gegen BMW kämpfen (PiDrive-Praxis: Volume fix / DSP im Auto)
+
+**Ausbaustufe S3 — Browsing** (nur wenn Phase −1 positiv; Details [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md)):
+
+Target-seitig u. a. zu unterstützen: `SetBrowsedPlayer`, `ChangePath`, `GetFolderItems`, `GetItemAttributes`, `GetTotalNumberOfItems`, `PlayItem` (optional Search). Voraussetzung: Host-Stack mit Browsing-API (**A17**, typisch BTstack). PDAP-Menü-Kanal §2.24.
+
 ---
 
 ## 2.10 Metadata-Engine
 
+**Umsetzbarkeit ist stackabhängig (F1):** Die öffentliche Bluedroid-Target-API kann keine Element-Attributes setzen (`GetElementAttributes` wird nicht an die App gereicht; `esp_avrc_ct_send_metadata_cmd` gilt nur für die Controller-Rolle). Ohne BTstack oder IDF-Patch bleibt das BMW-Display im Gateway-Pfad leer — Entscheidung **A17** ([OFFENE-PUNKTE.md](OFFENE-PUNKTE.md)).
+
 - Pi sendet strukturierte Metadata analog zu den heutigen MPRIS-Feldern (Title, Artist, Album, Source, Playing-Status …)
 - Felder stammen aus denselben Inputs wie `mpris2.update()` / Playback-Status / DLS / ICY
-- ESP setzt daraus AVRCP TrackChanged + Element Attributes
+- ESP setzt daraus AVRCP TrackChanged + Element Attributes (**sofern der gewählte Stack das erlaubt**)
 - Zuerst observe (welche Attribute der BMW anfordert), dann implementieren
 - Bei aktivem Gateway ist BlueZ-MPRIS fürs BMW-Display optional idle
+- Bei S3: die drei Zeilen bleiben parallel sinnvoll (Now Playing); die Liste kommt über Browsing
+
 ---
 
 ## 2.11 Control API & Statusmodell
@@ -307,11 +313,12 @@ Empfohlene Tasks (Prioritäten später festlegen):
 - PDAP Control
 - PDAP Audio Receiver + Jitter-Buffer
 - SBC Encoder
-- A2DP Source
-- AVRCP
+- A2DP Source / AVRCP (Host-Stack **A17** — Bluedroid-Profile oder BTstack-Profile + ggf. `menu_target`)
 - WebUI / HTTP (+ lokales OTA)
 - Diagnostics / Watchdog
 - State Machine
+
+**Komponentenliste** unter `components/` erst nach A17 festschreiben ([OFFENE-PUNKTE.md](OFFENE-PUNKTE.md) Abschnitt D).
 
 ---
 
@@ -359,11 +366,13 @@ In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz).
 
 | Phase | Exit-Kriterium |
 |-------|----------------|
+| −1 | Browsing-/Metadata-Probe am Pi ausgewertet → A17/A18/S3-Wegwahl |
 | 0 | Vollständige BMW-Protokollvermessung + Analyzer |
-| Coexistence | ≥ 30 min stabil A2DP + WiFi |
+| Coexistence | ≥ 30 min stabil A2DP + WiFi (Stack-spezifisch) |
 | A2DP | Stabiler Testton zum BMW |
 | AVRCP | Alle relevanten Commands geloggt und gemappt |
-| Metadata | Titel/Artist erscheinen korrekt |
+| Metadata | Titel/Artist erscheinen korrekt (stackabhängig) |
+| Menü | **Menü im Fahrzeug bedienbar** — bei S1: Skip/Play-Ergonomie; bei S3: Browse-Liste. Messgröße aus PiDrive: Tastendrücke bis Ziel |
 | PDAP Audio | Stabiles PCM über WLAN |
 | Integration | Webradio (und ggf. Spotify/lokal) über Gateway hör- und steuerbar; DAB optional nach PW-Bridge |
 | Robustheit | Mehrere erfolgreiche Auto-Tests ohne manuellen Eingriff |
@@ -399,6 +408,38 @@ In **diesem** Repo: PDAP-Contract + `clients/pdap_tester/` (Laptop-Referenz).
 
 ---
 
+## 2.24 Menü-Transport
+
+Das Menü ist das zentrale Produktmerkmal der PiDrive-Bedienung am iDrive; es darf nicht nur in §2.10 „mitgemeint“ sein. Grundlage: [AVRCP-MOEGLICHKEITEN.md](AVRCP-MOEGLICHKEITEN.md).
+
+| Stufe | Was der ESP tut | Was der Pi tut |
+|-------|-----------------|----------------|
+| **S1** | Metadata (3 Zeilen) + Pass-Through→Events | Menübaum, Skip=Cursor, Play=Enter, `map_event` |
+| **S3** | Generische Browse-Items an BMW + `PlayItem`→PDAP | Semantik der UIDs, Baumaufbau, Invalidierung |
+
+**Designregel:** Der ESP kennt keine PiDrive-Geschäftslogik; er transportiert eine **generische, semantikfreie** Baumstruktur (Ordner/Items/Namen/playable). Bedeutung kennt nur der Client.
+
+**PDAP-Skizze (Diskussionsgrundlage, nicht byte-fest):**
+
+```
+MENU_TREE      { uid_counter, nodes: [ { uid, parent_uid, kind: folder|item,
+                                         name, playable, attrs: {…} } ] }
+MENU_INVALIDATE{ uid_counter }                      Pi → ESP: Baum neu holen
+MENU_ACTIVATE  { uid }                              ESP → Pi: aus PlayItem
+MENU_PAGE_REQ  { parent_uid, start, count }         optional (Lazy-Loading)
+MENU_PAGE_RSP  { parent_uid, start, nodes[] }
+```
+
+**Größenbudget (Vorschlag):** ≤ 32 KB / ≤ 400 Knoten im ESP; darüber `MENU_PAGE_*`. Heutige PiDrive-Bäume (~100–200 Knoten) passen; große lokale Bibliotheken nicht ohne Lazy-Loading (R23 / A18).
+
+**`uid_counter`:** nur erhöhen, wenn sich die UID-Menge ändert — nicht bei jedem Rebuild/`menu_rev` (sonst Permanent-Reload im Auto). Contract-Spiegel zu PiDrive M1.
+
+Offen: Aktionen ohne Wiedergabe nach `PlayItem` (A18).
+
+---
+
 ## Nächster Schritt nach Freigabe
 
-Ausarbeitung der detaillierten Zustandsübergänge + PDAP-Header-Definition + FreeRTOS-Task-Prioritäten, parallel Start der Phase-0-Firmware (Analyzer + A2DP-Testton + Hub-Register-Stub).
+1. Phase −1 abwarten → **A17** entscheiden  
+2. Dann: Zustandsübergänge + PDAP-Header + FreeRTOS-Prioritäten + Komponentenstruktur  
+3. Phase-0-Firmware (Analyzer + A2DP-Testton + Hub-Register-Stub) — **nicht vorher**
